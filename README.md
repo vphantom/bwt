@@ -10,7 +10,7 @@ Heavily inspired by the basic principles of JSON Web Tokens, but with an explici
 
 ### Status
 
-Release Candidate 1 - 2025-09-14
+Release Candidate 2 - 2025-09-14
 
 ### Format
 
@@ -19,8 +19,9 @@ Like JWT, tokens are represented as 3 ASCII sections separated by periods `.`:
 * **Header** — As of this writing, 3 characters:
   * **Payload format:**
     * **A** Series of LEB128 unsigned integers, encoded as base64url
-    * **B** Payload is a Protobuf message (application-specific), encoded as base64url
-    * **C** Payload is a Protobuf message (application-specific), gzipped, encoded as base64url
+    * **B** Series of PrefixVarint unsigned integers, encoded as base64url
+    * **I** Payload is a Protobuf message (BYO schema), encoded as base64url
+    * **J** Payload is a Protobuf message (BYO schema), gzipped, encoded as base64url
   * **Signature format:**
     * **A** Means the signature is an HMAC-SHA512-224 signature of the payload, encoded as base64url
   * **Payload version:** A character to help applications distinguish payload structure differences over time.
@@ -28,6 +29,47 @@ Like JWT, tokens are represented as 3 ASCII sections separated by periods `.`:
 * **Signature** — Proof of integrity in the format specified by the header.
 
 The 3 components are combined with periods: `AAA.XXXXXXXX.XXXXXXXX`
+
+#### LEB128
+
+Little Endian Base 128 is a variable-length encoding for unsigned integers. Implemented by Google Protocol Buffers and native in Perl's `pack()`, the advantage of LEB128 is that any size integer may be represented (no 64-bit limit).  Each byte uses 7 bits for data and 1 bit as a continuation flag. If the most significant bit (MSB) is set, there are more bytes to follow. The data bits are combined in little-endian order to form the final integer.
+
+**Decoding algorithm:**
+
+1. Initialize result = 0, shift = 0
+2. For each byte:
+   - If MSB is set (byte ≥ 128), extract lower 7 bits and continue
+   - Add (byte & 0x7F) << shift to result
+   - Increase shift by 7
+   - If MSB was clear, stop
+
+**Examples:**
+
+- `0x08` → 8 (single byte: MSB=0, value=8)
+- `0x96 0x01` → 150
+  - First byte: `0x96` = `10010110`, MSB=1, data=`0010110` (22)
+  - Second byte: `0x01` = `00000001`, MSB=0, data=`0000001` (1)
+  - Result: 22 + (1 × 128) = 150
+
+#### PrefixVarint
+
+An alternative variable-length encoding for unsigned integers that eliminates loops and most bit shifts compared to LEB128. The first byte's prefix determines how many additional bytes follow. PrefixVarint encodes 64-bit values in at most 9 bytes (vs 10 for LEB128) and is more CPU-efficient due to its branching structure instead of loops.  The first byte determines the integer size based on its prefix pattern. Any data bits in the first byte represent the least significant bits, with additional bytes following in little-endian order.
+
+**Decoding table:**
+
+| Byte (`c`) | Type   | Condition | Operation                          |
+| ---------- | ------ | --------- | ---------------------------------- |
+| `0_______` | 7-bit  | `< 128`   | `c`                                |
+| `10______` | 14-bit | `< 192`   | `(read_u8le() << 6) | (c & 0x3F)`  |
+| `110_____` | 21-bit | `< 224`   | `(read_u16le() << 5) | (c & 0x1F)` |
+| `1110____` | 28-bit | `< 240`   | `(read_u24le() << 4) | (c & 0x0F)` |
+| `11110___` | 35-bit | `< 248`   | `(read_u32le() << 3) | (c & 0x07)` |
+| `111110__` | 42-bit | `< 252`   | `(read_u40le() << 2) | (c & 0x03)` |
+| `1111110_` | 49-bit | `< 254`   | `(read_u48le() << 1) | (c & 0x01)` |
+| `11111110` | 56-bit | `< 255`   | `read_u56le()`                     |
+| `11111111` | 64-bit | `< 256`   | `read_u64le()`                     |
+
+Where `read_uNNle()` reads the next NN-bit unsigned integer in little-endian byte order.
 
 ### Token Fields
 
