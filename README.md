@@ -10,21 +10,21 @@ Heavily inspired by the basic principles of JSON Web Tokens, but with an explici
 
 ### Status
 
-Release Candidate 2 - 2025-09-14
+Release Candidate 2 - 2025-09-15
 
 ### Format
 
 Like JWT, tokens are represented as 3 ASCII sections separated by periods `.`:
 
-* **Header** — As of this writing, 3 characters:
-  * **Payload format:**
+* **Header** — As of this writing, at least two 7-bit ASCII characters:
+  * **First, payload format:**
     * **A** Series of LEB128 unsigned integers, encoded as base64url
     * **B** Series of PrefixVarint unsigned integers, encoded as base64url
     * **I** Payload is a Protobuf message (BYO schema), encoded as base64url
     * **J** Payload is a Protobuf message (BYO schema), gzipped, encoded as base64url
-  * **Signature format:**
+  * **Second, signature format:**
     * **A** Means the signature is an HMAC-SHA512-224 signature of the payload, encoded as base64url
-  * **Payload version:** A character to help applications distinguish payload structure differences over time.
+  * **Any additional characters, payload version:** Any number of characters to help applications distinguish payload structure differences over time, if needed.
 * **Payload** — Data in the format specified by the header.
 * **Signature** — Proof of integrity in the format specified by the header.
 
