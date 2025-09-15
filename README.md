@@ -53,7 +53,7 @@ Little Endian Base 128 is a variable-length encoding for unsigned integers. Impl
 
 #### PrefixVarint
 
-An alternative variable-length encoding for unsigned integers that eliminates loops and most bit shifts compared to LEB128. The first byte's prefix determines how many additional bytes follow. PrefixVarint encodes 64-bit values in at most 9 bytes (vs 10 for LEB128) and is more CPU-efficient due to its branching structure instead of loops.  The first byte determines the integer size based on its prefix pattern. Any data bits in the first byte represent the least significant bits, with additional bytes following in little-endian order.
+An alternative variable-length encoding for unsigned integers that eliminates loops and most bit shifts compared to LEB128.  The first byte's prefix determines how many additional bytes follow. PrefixVarint encodes 64-bit values in at most 9 bytes (vs 10 for LEB128) and is more CPU-efficient due to its branching structure instead of loops.  Any data bits in the first byte represent the least significant bits, with additional bytes following in little-endian order.
 
 **Decoding table:**
 
