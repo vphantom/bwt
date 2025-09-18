@@ -79,7 +79,7 @@ Payload must include:
 * 2 — `expires` seconds (usually 1800 for admins, 43200 for others, 86400 for e-mail links)
 * 3 — `is_nonce` flag (optional)
 * 4 — `user` some kind of ID (optional)
-* 5 — `admin` some kind of ID (optional)
+* 5 — `admin` some kind of ID if an admin is impersonating another user (optional)
 * ... — Any other ephemeral data. Bump your payload version if you make breaking changes.
 
 For list type payloads like `A`, optional fields may be truncated off the end of the list, but must be present when in the middle since they are positional. (i.e. `123456,1800` would be valid, equivalent to `123456,1800,0,0,0,...`)
