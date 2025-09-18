@@ -10,7 +10,7 @@ Heavily inspired by the basic principles of JSON Web Tokens, but with an explici
 
 ### Status
 
-Release Candidate 2 - 2025-09-15
+Release Candidate 2 — 2025-09-18
 
 ### Format
 
@@ -23,8 +23,8 @@ Like JWT, tokens are represented as 3 ASCII sections separated by periods `.`:
     * **I** Payload is a Protobuf message (BYO schema), encoded as base64url
     * **J** Payload is a Protobuf message (BYO schema), gzipped, encoded as base64url
   * **Second, signature format:**
-    * **A** Means the signature is an HMAC-SHA512-224 signature of the payload, encoded as base64url
-  * **Any additional characters, payload version:** Any number of characters to help applications distinguish payload structure differences over time, if needed.
+    * **A** An HMAC-SHA512-224 signature of the payload, encoded as base64url
+  * **Any additional characters, payload version:** Any alphanumeric characters to help applications distinguish payload structure differences over time, if needed.
 * **Payload** — Data in the format specified by the header.
 * **Signature** — Proof of integrity in the format specified by the header.
 
@@ -38,18 +38,18 @@ Little Endian Base 128 is a variable-length encoding for unsigned integers. Impl
 
 1. Initialize result = 0, shift = 0
 2. For each byte:
-   - If MSB is set (byte ≥ 128), extract lower 7 bits and continue
-   - Add (byte & 0x7F) << shift to result
-   - Increase shift by 7
-   - If MSB was clear, stop
+   * If MSB is set (byte ≥ 128), extract lower 7 bits and continue
+   * Add (byte & 0x7F) << shift to result
+   * Increase shift by 7
+   * If MSB was clear, stop
 
 **Examples:**
 
-- `0x08` → 8 (single byte: MSB=0, value=8)
-- `0x96 0x01` → 150
-  - First byte: `0x96` = `10010110`, MSB=1, data=`0010110` (22)
-  - Second byte: `0x01` = `00000001`, MSB=0, data=`0000001` (1)
-  - Result: 22 + (1 × 128) = 150
+* `0x08` → 8 (single byte: MSB=0, value=8)
+* `0x96 0x01` → 150
+   * First byte: `0x96` = `10010110`, MSB=1, data=`0010110` (22)
+   * Second byte: `0x01` = `00000001`, MSB=0, data=`0000001` (1)
+   * Result: 22 + (1 × 128) = 150
 
 #### PrefixVarint
 
@@ -75,11 +75,11 @@ Where `read_uNNle()` reads the next NN-bit unsigned integer in little-endian byt
 
 Payload must include:
 
-* 1 — `issued_at` timestamp (UNIX Epoch seconds - 1,750,750,750)
+* 1 — `issued_at` timestamp
 * 2 — `expires` seconds (usually 1800 for admins, 43200 for others, 86400 for e-mail links)
-* 3 — `user_id` (optional)
-* 4 — `admin_id` (optional)
-* 5 — `nonce` flag (optional)
+* 3 — `is_nonce` flag (optional)
+* 4 — `user` some kind of ID (optional)
+* 5 — `admin` some kind of ID (optional)
 * ... — Any other ephemeral data. Bump your payload version if you make breaking changes.
 
 For list type payloads like `A`, optional fields may be truncated off the end of the list, but must be present when in the middle since they are positional. (i.e. `123456,1800` would be valid, equivalent to `123456,1800,0,0,0,...`)
@@ -90,7 +90,7 @@ When used as cookies, the cookie's expiration should match the token's.
 
 Users should not be cached for more than 60 seconds in applications to keep the logout window short.
 
-* `id` integer unique identifier
+* Some kind of unique ID
 * `logout_at` timestamp of last logout
 * `admin_logout_at` timestamp of last admin impersonation logout
 
@@ -99,8 +99,8 @@ Users should not be cached for more than 60 seconds in applications to keep the 
 Several conditions must be met:
 
 * The signature must match today's or yesterday's server key
-* The current timestamp must be less than the token's `issued_at + 1,750,750,750 + expires`
-* The token's `issued_at + 1,750,750,750` must be greater than the user's `logout_at` (or for admins, the impersonated user's `admin_logout_at`)
+* The current timestamp must be less than the token's `issued_at + expires`
+* The token's `issued_at` must be greater than the user's `logout_at` (or for admins, the impersonated user's `admin_logout_at`)
 
 Tokens with the `nonce` flag set must not be used for HTTP cookies: remove the flag first.
 
