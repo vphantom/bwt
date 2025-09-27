@@ -19,7 +19,7 @@ Tokens are represented as 2 ASCII sections separated by a period `.`:
 
 Left-trimming here refers to removing leading zeros prior to conversion.  Value `0x000fffff` should be encoded as `VVVVV`, not `QQQVVVVV`.
 
-Full example: `LLLLLLLL:ZZZZZ:1:MMMMMM:XXXXXX.WWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWW`
+Full example: `LLLLLLLL:ZZZZZ:L:MMMMMM:XXXXXX.WWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWW`
 
 #### Safe-Hex
 
