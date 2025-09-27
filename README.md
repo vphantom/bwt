@@ -4,35 +4,28 @@
 
 <!-- [![GitHub release](https://img.shields.io/github/release/vphantom/bwt.svg?style=plastic)]() -->
 
-Heavily inspired by the basic principles of JSON Web Tokens, but with an explicit requirement for server-side information in order to guarantee timely logouts, all in a format small enough to use in e-mail verification links and cookies.
+Inspired by the basic principles of JSON Web Tokens, but with an explicit requirement for server-side information in order to guarantee timely logouts, all in a format compact enough to use in e-mail verification links and cookies.
 
 ## SPECIFICATION
 
 ### Status
 
-Release Candidate 3 — 2025-09-18
+Release 1.0 — 2025-09-27
 
 ### Format
 
-Like JWT, tokens are represented as 3 ASCII sections separated by periods `.`:
+Tokens are represented as 2 ASCII sections separated by a period `.`:
 
-* **Header** — As of this writing, at least two 7-bit ASCII characters:
-  * **First, payload format:**
-    * `I` Series of safe-hex unsigned integers, colon (`:`) delimited
-    * `p` Payload is a Protobuf message (BYO schema), encoded as base64url
-    * `P` Payload is a Protobuf message (BYO schema), encoded as safe-hex
-  * **Second, signature format:**
-    * `h` An HMAC-SHA512-224 signature of the payload, encoded as base64url
-    * `H` An HMAC-SHA512-224 signature of the payload, encoded as safe-hex
-  * **Any additional characters, payload version:** Any alphanumeric characters to help applications distinguish payload structure differences over time, if needed.
-* **Payload** — Data in the format specified by the header.
-* **Signature** — Proof of integrity in the format specified by the header.
+* **Payload** — Series of left-trimmed safe-hex unsigned 64-bit integers, colon (`:`) delimited
+* **Signature** — HMAC-SHA512-224 safe-hex encoded signature of the final encoded payload
 
-The 3 components are combined with periods: `HH.XXXXXXXX.XXXXXXXX`.
+Left-trimming here refers to removing leading zeros prior to conversion.  Value `0x000fffff` should be encoded as `VVVVV`, not `QQQVVVVV`.
+
+Full example: `LLLLLLLL:ZZZZZ:1:MMMMMM:XXXXXX.WWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWW`
 
 #### Safe-Hex
 
-In some contexts such as e-mailed links, neither Base 64 nor Base 32 Crockford can fully avoid false positives with overzealous profanity scanners.  We define a backwards-compatible alternative hexadecimal character set which was carefully designed to solve the issue:
+In some contexts such as e-mailed links, neither Base 64 nor Base 32 Crockford or regular hex can fully avoid false positives by overzealous profanity scanners.  We define a backwards-compatible alternative hexadecimal character set which was carefully designed to solve the issue:
 
 | Value | Char | Alternatives | Value | Char | Alternatives |
 | ----- | ---- | ------------ | ----- | ---- | ------------ |
@@ -45,37 +38,42 @@ In some contexts such as e-mailed links, neither Base 64 nor Base 32 Crockford c
 | `6`   | `J`  | `G 6`        | `E`   | `R`  | `E`          |
 | `7`   | `T`  | `7`          | `F`   | `V`  | `U F`        |
 
-Encoders must use the "Char" column exclusively (set `QLZMXWJTH9KPCDRV`) and decoders must accept these and their alternatives, which includes regular hex.
+Encoders must use the "Char" column exclusively, in uppercase (set `QLZMXWJTH9KPCDRV`) and decoders must accept these and their alternatives, which includes regular hex, case insensitively.
 
 ### Token Fields
 
-Payload must include at minimum:
+Payload is composed of up to 5 integers:
 
-* 1 — `issued_at` timestamp
-* 2 — `expires` seconds (usually 1800 for admins, 43200 for others, 86400 for e-mail links)
-* 3 — `is_nonce` flag (optional)
+* 1 — `issued_at` timestamp (UNIX Epoch minus 1,750,750,750)
+* 2 — `expires` minutes (usually 30 for admins, 720 for others, 1440 for e-mail links)
+* 3 — `is_nonce` flag, set to 1 (safe-hex `L`) if true, omit if false (empty string)
 * 4 — `user` some kind of ID (optional)
 * 5 — `admin` some kind of ID if an admin is impersonating another user (optional)
 
-For list type payloads like `I`, optional fields may be truncated off the end of the list, but must be present when in the middle since they are positional. (i.e. `123456,1800` would be valid, equivalent to `123456,1800,0,0,0,...`)
+Trailing separators should be trimmed.  (i.e. encoding `LL:ZZ:MM::` should be trimmed to `LL:ZZ:MM`)
 
-When used as cookies, the cookie's expiration should match the token's `issued_at + expires`.
+When used as cookies, the cookie's expiration should match the token's `issued_at + 1_750_750_750 + expires`.
+
+Note: the time offset of 1,750,750,750 seconds was chosen to keep timestamps smaller.  This brings Epoch around June 2025, which was before this specification was finalized, and was selected to minimize the risk of typos.
 
 ### User Object Fields
 
-Users should not be cached for more than 60 seconds in applications to keep the logout window short.
+Users should not be cached for more than 60 seconds in applications to keep the logout window short.  They should at least contain 3 fields:
 
-* Some kind of unique ID
-* `logout_at` timestamp of last logout
-* `admin_logout_at` timestamp of last admin impersonation logout
+* An unsigned integer ID
+* `logout_at` timestamp of last logout by the user (invalidates user's own tokens)
+* `admin_logout_at` timestamp of last logout by an admin impersonating the user (invalidates admin impersonation tokens only)
 
 ### Validation
 
 Several conditions must be met:
 
 * The signature must match today's or yesterday's server key
-* The current timestamp must be less than the token's `issued_at + expires`
-* The token's `issued_at` must be greater than the user's `logout_at` (or for admins, the impersonated user's `admin_logout_at`)
+* The current timestamp must be less than the token's `issued_at + 1_750_750_750 + expires`
+* For admins impersonating users, the token's `issued_at + 1_750_750_750` must be greater than the user's `admin_logout_at`
+* For regular users, the token's `issued_at + 1_750_750_750` must be greater than the user's `logout_at`
+
+Note about server keys: servers should keep a current key and the previous day's, and accept tokens signed with either key.  This ensures that tokens are always valid for their full lifetime regardless of time of day.
 
 ### NONCE Flag
 
@@ -92,7 +90,7 @@ When a user requests logging out, its `logout_at` (or `admin_logout_at` if the t
 
 ### Refreshing
 
-Issue new web tokens when the ephemeral part of the payload (if any) changed or when at least 20% of the expiration time has elapsed.
+Issue new web tokens when payload data changed or when at least 20% of the expiration time has elapsed.
 
 ## ACKNOWLEDGEMENTS
 
