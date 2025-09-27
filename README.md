@@ -1,8 +1,6 @@
 # Binary Web Token
 
-[![license](https://img.shields.io/github/license/vphantom/bwt.svg?style=plastic)]()
-
-<!-- [![GitHub release](https://img.shields.io/github/release/vphantom/bwt.svg?style=plastic)]() -->
+[![license](https://img.shields.io/github/license/vphantom/bwt.svg?style=plastic)]() [![GitHub release](https://img.shields.io/github/release/vphantom/bwt.svg?style=plastic)]()
 
 Inspired by the basic principles of JSON Web Tokens, but with an explicit requirement for server-side information in order to guarantee timely logouts, all in a format compact enough to use in e-mail verification links and cookies.
 
