@@ -8,7 +8,7 @@ Inspired by the basic principles of JSON Web Tokens, but with an explicit requir
 
 ### Status
 
-Release 1.0 — 2025-12-15
+Release 1.0rc2 — 2025-12-15
 
 ### Format
 
