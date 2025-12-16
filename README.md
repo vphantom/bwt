@@ -8,7 +8,7 @@ Inspired by the basic principles of JSON Web Tokens, but with an explicit requir
 
 ### Status
 
-Release 1.0 — 2025-09-27
+Release 1.0 — 2025-12-15
 
 ### Format
 
@@ -17,26 +17,19 @@ Tokens are represented as 2 ASCII sections separated by a period `.`:
 * **Payload** — Series of left-trimmed safe-hex unsigned 64-bit integers, colon (`:`) delimited
 * **Signature** — HMAC-SHA512-224 safe-hex encoded signature of the final encoded payload
 
-Left-trimming here refers to removing leading zeros prior to conversion.  Value `0x000fffff` should be encoded as `VVVVV`, not `QQQVVVVV`.
+Left-trimming here refers to removing leading zeros prior to conversion.  Value `0x000fffff` should be encoded as `ZZZZZ`, not `GGGZZZZZ`.
 
-Full example: `LLLLLLLL:ZZZZZ:L:MMMMMM:XXXXXX.WWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWW`
+Full example: `HHHHHHHH:JJJJJ:H:KKKKKK:LLLLLL.WWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWW`
 
 #### Safe-Hex
 
-In some contexts such as e-mailed links, neither Base 64 nor Base 32 Crockford or regular hex can fully avoid false positives by overzealous profanity scanners.  We define a backwards-compatible alternative hexadecimal character set which was carefully designed to solve the issue:
+In some contexts such as e-mailed links, neither base 64 nor Crockford's base 32 or even regular hexadecimal can fully avoid false positives by overzealous profanity scanners. BWT uses an alternative hexadecimal character set with no vowel or vowel-looking characters and zero overlap with standard hex:
 
-| Value | Char | Alternatives | Value | Char | Alternatives |
-| ----- | ---- | ------------ | ----- | ---- | ------------ |
-| `0`   | `Q`  | `O 0`        | `8`   | `H`  | `8`          |
-| `1`   | `L`  | `I Y 1`      | `9`   | `9`  |              |
-| `2`   | `Z`  | `2`          | `A`   | `K`  | `A`          |
-| `3`   | `M`  | `N 3`        | `B`   | `P`  | `B`          |
-| `4`   | `X`  | `4`          | `C`   | `C`  |              |
-| `5`   | `W`  | `S 5`        | `D`   | `D`  |              |
-| `6`   | `J`  | `G 6`        | `E`   | `R`  | `E`          |
-| `7`   | `T`  | `7`          | `F`   | `V`  | `U F`        |
+| Hex      | `0`  | `1`  | `2`  | `3`  | `4`  | `5`  | `6`  | `7`  | `8`  | `9`  | `A`  | `B`  | `C`  | `D`  | `E`  | `F`  |
+| -------- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- |
+| Safe-Hex | `G`  | `H`  | `J`  | `K`  | `L`  | `M`  | `N`  | `P`  | `Q`  | `R`  | `S`  | `T`  | `V`  | `W`  | `X`  | `Z`  |
 
-Encoders must use the "Char" column exclusively, in uppercase (set `QLZMXWJTH9KPCDRV`) and decoders must accept these and their alternatives, which includes regular hex, case insensitively.
+Only these 16 characters (`GHJKLMNPQRSTVWXZ`) are allowed, strictly in uppercase.
 
 ### Token Fields
 
@@ -44,7 +37,7 @@ Payload is composed of up to 5 integers:
 
 * 1 — `issued_at` timestamp (UNIX Epoch minus 1,750,750,750)
 * 2 — `expires` minutes (usually 30 for admins, 720 for others, 1440 for e-mail links)
-* 3 — `is_nonce` flag, set to 1 (safe-hex `L`) if true, omit if false (empty string)
+* 3 — `is_nonce` flag, set to 1 (safe-hex `H`) if true, omit if false (empty string)
 * 4 — `user` some kind of ID (optional)
 * 5 — `admin` some kind of ID if an admin is impersonating another user (optional)
 
@@ -52,7 +45,7 @@ Trailing separators should be trimmed.  (i.e. encoding `LL:ZZ:MM::` should be tr
 
 When used as cookies, the cookie's expiration should match the token's `issued_at + 1_750_750_750 + expires`.
 
-Note: the time offset of 1,750,750,750 seconds was chosen to keep timestamps smaller.  This brings Epoch around June 2025, which was before this specification was finalized, and was selected to minimize the risk of typos.
+Note: the time offset of 1,750,750,750 seconds was chosen to keep timestamps smaller and avoid typos.  This brings Epoch around June 2025, which was before this specification was finalized.
 
 ### User Object Fields
 
@@ -88,9 +81,9 @@ When a user requests logging out, its `logout_at` (or `admin_logout_at` if the t
 
 ### Refreshing
 
-Issue new web tokens when payload data changed or when at least 20% of the expiration time has elapsed.
+Issue new web tokens only when payload data changed or when at least 20% of the expiration time has elapsed.
 
-## ACKNOWLEDGEMENTS
+## ACKNOWLEDGMENTS
 
 Graph X Design Inc. https://www.gxd.ca/ sponsored part of this project.
 
