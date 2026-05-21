@@ -8,14 +8,14 @@ Inspired by the basic principles of JSON Web Tokens, but with an explicit requir
 
 ### Status
 
-Release 1.0rc2 — 2025-12-15
+Release 1.0rc3 — 2026-05-20
 
 ### Format
 
 Tokens are represented as 2 ASCII sections separated by a period `.`:
 
 * **Payload** — Series of left-trimmed safe-hex unsigned 64-bit integers, colon (`:`) delimited
-* **Signature** — HMAC-SHA512-224 safe-hex encoded signature of the final encoded payload
+* **Signature** — HMAC-SHA-224 safe-hex encoded signature of the final encoded payload
 
 Left-trimming here refers to removing leading zeros prior to conversion.  Value `0x000fffff` should be encoded as `ZZZZZ`, not `GGGZZZZZ`.
 
@@ -89,7 +89,7 @@ Graph X Design Inc. https://www.gxd.ca/ sponsored part of this project.
 
 ## LICENSE AND COPYRIGHT
 
-Copyright (c) 2024-2025 Stéphane Lavergne <https://github.com/vphantom>
+Copyright (c) 2024-2026 Stéphane Lavergne <https://github.com/vphantom>
 
 Distributed under the MIT (X11) License:
 http://www.opensource.org/licenses/mit-license.php
