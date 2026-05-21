@@ -10,16 +10,23 @@ Inspired by the basic principles of JSON Web Tokens, but with an explicit requir
 
 Release 1.0rc3 — 2026-05-20
 
+### Implementations
+
+* [OCaml](ocaml/README.md)
+* [Perl 5](perl5/README.md) (planned)
+* [Python](python/README.md) (planned)
+
 ### Format
 
-Tokens are represented as 2 ASCII sections separated by a period `.`:
+Tokens are represented as 2 ASCII sections separated by character '6' or '9':
 
-* **Payload** — Series of left-trimmed safe-hex unsigned 64-bit integers, colon (`:`) delimited
-* **Signature** — HMAC-SHA-224 safe-hex encoded signature of the final encoded payload
+* **Payload** — Series of left-trimmed safe-hex unsigned 64-bit integers, '5' delimited
+* **NONCE flag** — Character '9' if this BWT is a "NONCE", '6' if it is not
+* **Signature** — HMAC-SHA-224 signature of the final encoded payload, truncated to the first 16 bytes (128 bits), safe-hex encoded
 
 Left-trimming here refers to removing leading zeros prior to conversion.  Value `0x000fffff` should be encoded as `ZZZZZ`, not `GGGZZZZZ`.
 
-Full example: `HHHHHHHH:JJJJJ:H:KKKKKK:LLLLLL.WWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWW`
+Full example: `HHHHHHHH5JJJJJ5KKKKKK5LLLLLL6WWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWW`
 
 #### Safe-Hex
 
@@ -33,15 +40,14 @@ Only these 16 characters (`GHJKLMNPQRSTVWXZ`) are allowed, strictly in uppercase
 
 ### Token Fields
 
-Payload is composed of up to 5 integers:
+Payload is composed of up to 4 integers:
 
 * 1 — `issued_at` timestamp (UNIX Epoch minus 1,750,750,750)
 * 2 — `expires` minutes (usually 30 for admins, 720 for others, 1440 for e-mail links)
-* 3 — `is_nonce` flag, set to 1 (safe-hex `H`) if true, omit if false (empty string)
-* 4 — `user` some kind of ID (optional)
-* 5 — `admin` some kind of ID if an admin is impersonating another user (optional)
+* 3 — `user` some kind of ID (optional)
+* 4 — `admin` some kind of ID if an admin is impersonating another user (optional)
 
-Trailing separators should be trimmed.  (i.e. encoding `LL:ZZ:MM::` should be trimmed to `LL:ZZ:MM`)
+Trailing separators should be trimmed.  (i.e. encoding `LL5ZZ5MM55` should be trimmed to `LL5ZZ5MM`)
 
 When used as cookies, the cookie's expiration should match the token's `issued_at + 1_750_750_750 + expires`.
 
@@ -64,11 +70,11 @@ Several conditions must be met:
 * For admins impersonating users, the token's `issued_at + 1_750_750_750` must be greater than the user's `admin_logout_at`
 * For regular users, the token's `issued_at + 1_750_750_750` must be greater than the user's `logout_at`
 
-Note about server keys: servers should keep a current key and the previous day's, and accept tokens signed with either key.  This ensures that tokens are always valid for their full lifetime regardless of time of day.
+Note about server keys: servers should keep a current key and the previous day's and accept tokens signed with either key.  This ensures that tokens are always valid for their full lifetime regardless of time of day.  Keys should be generated with the best random generator available.  28 bytes (224 bits) is the minimum, ideally 64 bytes (512 bits, the SHA-224 block size).
 
 ### NONCE Flag
 
-Tokens with the NONCE flag set must not be used for HTTP cookies.  Web sites receiving such tokens should:
+Tokens with the NONCE flag set (separator is '9') must not be used for HTTP cookies.  Web sites receiving such tokens should:
 
 * Display a doorway page greeting the user, saying they're logging in securely and offering a POST submit button to complete the process.
 * The form must include the NONCE token in a hidden field.

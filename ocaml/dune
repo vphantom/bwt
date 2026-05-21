@@ -1,0 +1,22 @@
+(library
+ (name bwt)
+ (wrapped false)
+ (modules :standard \ bwt_test)
+ (libraries digestif unix)
+ (instrumentation
+  (backend bisect_ppx)))
+
+(test
+ (name bwt_test)
+ (modules bwt_test)
+ (libraries bwt alcotest qcheck qcheck-alcotest))
+
+(env
+ (default
+  (ocamlopt_flags
+   (:standard -O2)))
+ (coverage
+  (flags
+   (:standard -w -71))
+  (ocamlopt_flags
+   (:standard -O2))))
