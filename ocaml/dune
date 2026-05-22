@@ -2,7 +2,7 @@
  (name bwt)
  (wrapped false)
  (modules :standard \ bwt_test)
- (libraries digestif unix)
+ (libraries digestif eqaf unix)
  (instrumentation
   (backend bisect_ppx)))
 

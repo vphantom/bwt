@@ -1,43 +1,58 @@
-let ( let| ) = Option.bind
-let[@inline] guard c = if c then Some () else None
+let ( let* ) = Result.bind
+let ( ||| ) o default = Option.value ~default o
+let[@inline] guard_res c e = if c then Ok () else Error e
 
 type t = {
   issued_at: int; (* Encoded as -1,750,750,750 *)
   expires: int; (* Minutes after issued_at *)
-  user: int option;
+  user: int;
   admin: int option;
-  is_nonce: bool; (* Encoded as 1 or omitted *)
-  is_stale: bool;
+  form: form;
+  salt: string option;
+  is_stale: bool; (* True if 20% or more of expiration has elapsed *)
 }
+
+and form = Short | Full
+
+type invalid =
+  | Bad_admin
+  | Bad_expiry
+  | Bad_issue
+  | Bad_signature
+  | Bad_user
+  | Expired
+  | Future
+  | Malformed
 
 let epoch_offset = 1_750_750_750
 
 let is_stale issued_at expires =
   let now = Unix.time () |> int_of_float in
+  (* NOTE: minutes * 60 * 20% -> minutes * 12 *)
   let expires = issued_at + (expires * 12) in
   now > expires
 ;;
 
-let make ?(nonce = false) ?(issued_at = Unix.time ()) ?user ?admin expires =
-  if user = None && admin <> None
-  then invalid_arg "Bwt.make: admin without user";
-  let issued_at = int_of_float issued_at in
-  if expires < 1 then invalid_arg "Bwt.make: negative or 0 expiration";
-  if issued_at < 0 then invalid_arg "Bwt.make: negative issued_at";
-  {
-    issued_at;
-    expires;
-    user;
-    admin;
-    is_nonce = nonce;
-    is_stale = is_stale issued_at expires;
-  }
-;;
-
-let random_key () =
-  let ic = open_in_bin "/dev/random" in
-  Fun.protect ~finally:(fun () -> close_in ic) @@ fun () ->
-  really_input_string ic 64
+let make ?(form = Full) ?salt ?issued_at ~user ?admin expires =
+  let now = Unix.time () |> int_of_float in
+  let issued_at = issued_at ||| now in
+  let* () = guard_res (issued_at >= epoch_offset) Bad_issue in
+  let* () = guard_res (issued_at <= now + 10) Future in
+  let* () = guard_res (expires >= 1) Bad_expiry in
+  let* () = guard_res (expires <= 1440) Bad_expiry in
+  let* () = guard_res (issued_at + (expires * 60) >= now) Expired in
+  let* () = guard_res (user >= 0) Bad_user in
+  let* () = guard_res (Option.value ~default:0 admin >= 0) Bad_admin in
+  Ok
+    {
+      issued_at;
+      expires;
+      user;
+      admin;
+      form;
+      salt;
+      is_stale = is_stale issued_at expires;
+    }
 ;;
 
 exception Invalid_safehex
@@ -90,16 +105,18 @@ let safehex_of_int n =
 
 let int_of_safehex s =
   match String.length s with
-  | 0 -> None
+  | 0 -> Error Malformed
+  | len when len > 16 -> Error Malformed
+  | len when len = 16 && nibble_of_char s.[0] > 3 -> Error Malformed
   | len -> (
     let rec aux acc i =
       if i >= len
-      then Some acc
+      then acc
       else aux ((acc lsl 4) lor nibble_of_char s.[i]) (i + 1)
     in
     match aux 0 0 with
-    | result -> result
-    | exception Invalid_safehex -> None
+    | result -> Ok result
+    | exception Invalid_safehex -> Error Malformed
   )
 ;;
 
@@ -113,7 +130,7 @@ let write_safehex_of_string buf s =
 
 let string_of_safehex s =
   let len = String.length s in
-  let| () = guard (len land 1 = 0) in
+  let* () = guard_res (len land 1 = 0) Malformed in
   match
     String.init (len / 2) (fun i ->
       let hi = nibble_of_char s.[i * 2] in
@@ -121,79 +138,83 @@ let string_of_safehex s =
       Char.chr ((hi lsl 4) lor lo)
   )
   with
-  | result -> Some result
-  | exception Invalid_safehex -> None
+  | result -> Ok result
+  | exception Invalid_safehex -> Error Malformed
 ;;
 
 let sign key payload =
-  let hmac = Digestif.SHA224.(hmac_string ~key payload |> to_raw_string) in
-  String.sub hmac 0 16
+  Digestif.SHA224.(hmac_string ~key payload |> to_raw_string)
 ;;
 
-let encode ~today buf t =
+let encode ~today t =
+  let buf = Buffer.create 128 in
   let write_sep buf = Buffer.add_char buf '5' in
   write_safehex_of_int buf (t.issued_at - epoch_offset);
   write_sep buf;
   write_safehex_of_int buf t.expires;
-  if t.user <> None || t.admin <> None
-  then (
-    write_sep buf;
-    Option.iter (write_safehex_of_int buf) t.user
-  );
+  write_sep buf;
+  write_safehex_of_int buf t.user;
   Option.iter (fun a -> write_sep buf; write_safehex_of_int buf a) t.admin;
-  let signature = Buffer.contents buf |> sign today in
-  Buffer.add_char buf (if t.is_nonce then '9' else '6');
-  write_safehex_of_string buf signature
+  let signature =
+    let raw =
+      match t.salt with
+      | None -> sign today (Buffer.contents buf)
+      | Some s -> sign today (s ^ Buffer.contents buf)
+    in
+    match t.form with
+    | Full -> raw
+    | Short -> String.sub raw 0 16
+  in
+  Buffer.add_char buf '9';
+  write_safehex_of_string buf signature;
+  Buffer.contents buf
 ;;
 
-let encode_str ~today t =
-  let buf = Buffer.create 128 in
-  encode ~today buf t; Buffer.contents buf
-;;
-
-let decode ?yesterday ~today s =
+let decode ?(salt = "") ?yesterday ~today s =
   let len = String.length s in
-  let rec find_sep = function
-    | i when i >= len -> None
-    | i -> (
-      match s.[i] with
-      | '6' -> Some (i, false)
-      | '9' -> Some (i, true)
-      | _ -> find_sep (i + 1)
+  let* () = guard_res (len <= 124) Malformed in
+  let* payload, sig_hex =
+    match String.split_on_char '9' s with
+    | [ a; b ] -> Ok (a, b)
+    | _ -> Error Malformed
+  in
+  let* sig_raw = string_of_safehex sig_hex in
+  let* form =
+    match String.length sig_raw with
+    | 16 -> Ok Short
+    | 28 -> Ok Full
+    | _ -> Error Malformed
+  in
+  let to_sign = salt ^ payload in
+  let check_sig key =
+    let computed = sign key to_sign in
+    let truncated =
+      match form with
+      | Full -> computed
+      | Short -> String.sub computed 0 16
+    in
+    Eqaf.equal truncated sig_raw
+  in
+  let* () =
+    if check_sig today
+    then Ok ()
+    else (
+      match yesterday with
+      | Some y when check_sig y -> Ok ()
+      | _ -> Error Bad_signature
     )
   in
-  let parse_payload payload is_nonce =
-    match String.split_on_char '5' payload with
-    | issued_str :: expires_str :: rest -> (
-      let| issued_at = int_of_safehex issued_str in
-      let| expires = int_of_safehex expires_str in
-      let issued_at = issued_at + epoch_offset in
-      let is_stale = is_stale issued_at expires in
-      let base =
-        { issued_at; expires; user = None; admin = None; is_nonce; is_stale }
-      in
-      match rest with
-      | [] | [ "" ] | [ ""; _ ] -> Some base
-      | [ u ] -> Some { base with user = int_of_safehex u }
-      | [ u; a ] ->
-        let user = int_of_safehex u in
-        let admin = int_of_safehex a in
-        let| () = guard (user <> None) in
-        Some { base with user; admin }
-      | _ -> None
-    )
-    | _ -> None
-  in
-  let| sep_pos, is_nonce = find_sep 0 in
-  let sig_str = String.sub s (sep_pos + 1) (len - sep_pos - 1) in
-  let| sig_raw = string_of_safehex sig_str in
-  let| () = guard (String.length sig_raw = 16) in
-  let payload = String.sub s 0 sep_pos in
-  if sign today payload |> String.equal sig_raw
-  then parse_payload payload is_nonce
-  else
-    let| yesterday = yesterday in
-    if sign yesterday payload |> String.equal sig_raw
-    then parse_payload payload is_nonce
-    else None
+  match String.split_on_char '5' payload with
+  | [ iss; exp; usr ] ->
+    let* issued_off = int_of_safehex iss in
+    let* expires = int_of_safehex exp in
+    let* user = int_of_safehex usr in
+    make ~form ~salt ~issued_at:(issued_off + epoch_offset) ~user expires
+  | [ iss; exp; usr; adm ] ->
+    let* issued_off = int_of_safehex iss in
+    let* expires = int_of_safehex exp in
+    let* user = int_of_safehex usr in
+    let* admin = int_of_safehex adm in
+    make ~form ~salt ~issued_at:(issued_off + epoch_offset) ~user ~admin expires
+  | _ -> Error Malformed
 ;;

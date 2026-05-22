@@ -8,6 +8,7 @@ OCaml reference implementation of Binary Web Tokens.  This module provides:
 The only dependencies are:
 
 * `digestif`
+* `eqaf`
 
 Development dependencies add:
 
@@ -44,6 +45,18 @@ In your project's root `dune` file, you probably want to suppress warnings from 
 ```
 
 Your libraries and executables can then depend on `bwt` directly.
+
+## Cryptographically Secure Key Generation
+
+You might want to use `mirage-crypto-rng`:
+
+```ocaml
+(* Once at start-up: *)
+let () = Mirage_crypto_rng_unix.use_default ();;
+
+(* Generate a key suitable for BWT: *)
+let today = Mirage_crypto_rng.generate 64 in
+```
 
 ## Coding Style
 
