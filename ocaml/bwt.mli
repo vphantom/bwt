@@ -2,11 +2,12 @@
 
     OCaml reference implementation of Binary Web Tokens.
 
-    Integer width caveat: OCaml's [int] is 63 bits on 64-bit platforms, so the
-    full unsigned 64-bit range cannot be represented. In practice this is not an
-    issue for timestamps, expiration values, or user/admin IDs, but a safe-hex
-    string whose decoded value would exceed [max_int] will produce incorrect
-    results. *)
+    Integer width caveat: OCaml's [int] is 63 bits signed on 64-bit platforms,
+    so the full unsigned 64-bit range cannot be represented. This module is
+    limited to 62-bit positive integers. In practice this is not an issue for
+    timestamps, expiration values, or user/admin IDs, but a safe-hex string
+    whose decoded value would exceed [max_int] will produce
+    [Error Int_overflow]. *)
 
 type t = private {
   issued_at: int; (* Seconds since UNIX Epoch *)
@@ -15,7 +16,7 @@ type t = private {
   admin: int option;
   form: form;
   salt: string option;
-  is_stale: bool; (* True if 20% or more of expiration has elapsed *)
+  is_stale: bool; (* True if 20%+ of expiry when [make] or [decode] was called *)
 }
 
 and form = Short | Full
@@ -28,10 +29,12 @@ type invalid =
   | Bad_user
   | Expired
   | Future
+  | Int_overflow
   | Malformed
 
 (** [make ?form ?salt ?issued_at ?admin ~user expires] constructs a new token.
-    [?form] defaults to [Full] and [issued_at] defaults to now. *)
+    [?form] defaults to [Full]. [issued_at] is in seconds since UNIX Epoch and
+    defaults to now: this module handles the offset internally. *)
 val make :
   ?form:form ->
   ?salt:string ->

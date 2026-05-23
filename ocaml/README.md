@@ -58,6 +58,10 @@ let () = Mirage_crypto_rng_unix.use_default ();;
 let today = Mirage_crypto_rng.generate 64 in
 ```
 
+## Known Limitations
+
+* User and admin fields are represented with the `int` type, and thus numbers 2<sup>62</sup> and above are not supported and yield `Error Int_overflow`.
+
 ## Coding Style
 
 - MLI files should include a brief summary of key design decisions to help future developers get situated quickly.

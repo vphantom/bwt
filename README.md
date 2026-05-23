@@ -21,13 +21,13 @@ Release 1.0rc4 — 2026-05-22
 Tokens are represented as 2 ASCII sections separated by character '9':
 
 * **Payload** — Series of safe-hex unsigned 64-bit integers, without leading zeros, '5' delimited
-* **Signature** — HMAC-SHA-224 signature of the final encoded payload, safe-hex encoded
+* **Signature** — Safe-hex encoded HMAC-SHA-224 signature of the final trimmed safe-hex encoded payload with delimiters, prefixed by the context salt if any
 
 A **full token** includes the full 224-bit signature, when length is not a constraint (i.e. HTTP cookies).  A **short token** truncates the signature to its initial 128 bits and is considered to be a one-time use token.  Decoders must accept both lengths.
 
 Short token example: `HHHHHHHH5JJJJJ5KKKKKK5LLLLLL9WWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWW`
 
-The maximum length of a token string is 124 bytes: `(4 * (64/4))` payload characters, 4 separators, `(224/4)` signature characters.
+The maximum length of a token string is thus 124 bytes: `(4 * (64/4))` payload characters, 4 separators, `(224/4)` signature characters.
 
 #### Safe-Hex
 
@@ -44,11 +44,11 @@ Only these 16 characters (`GHJKLMNPQRSTVWXZ`) are allowed, strictly in uppercase
 Payload is composed of 3 or 4 integers:
 
 * 1 — `issued_at` timestamp (UNIX Epoch minus 1,750,750,750)
-* 2 — `expires` minutes (usually 30 for admins, 720 for others, maximum 1440)
+* 2 — `expires` minutes (range: 1..1440, usually 30 for admins, 720 for others)
 * 3 — `user` some kind of ID
 * 4 — `admin` some kind of ID if an admin is impersonating another user (optional)
 
-Trailing separators should be trimmed.  (i.e. encoding `LL5ZZ5MM55` should be trimmed to `LL5ZZ5MM`)
+Trailing separators must be trimmed.  (i.e. encoding `LL5ZZ5MM55` must be trimmed to `LL5ZZ5MM`)
 
 When used as cookies, the cookie's expiration should match the token's `issued_at + 1_750_750_750 + (expires * 60)`.
 
@@ -67,21 +67,23 @@ Several conditions must be met:
 
 * The signature must match today's or yesterday's server key
 * Implementations must use a constant-time comparison function
-* The token's `issued_at + 1_750_750_750` should be at most 10 seconds in the future (to allow for clock skew between servers)
+* The token must include exactly 3 or 4 payload fields as of BWT v1
+* The token's `issued_at + 1_750_750_750` should be at most 30 seconds in the future (to allow for clock skew between servers)
 * The current timestamp must be less than the token's `issued_at + 1_750_750_750 + (expires * 60)`
 * For admins impersonating users, the token's `issued_at + 1_750_750_750` must be greater than the user's `admin_logout_at`
 * Creation time validation:
-  * A token with `admin` set needs `(token.issued_at + 1_750_750_750) > user.admin_logout_at`
+  * A token of any size with `admin` set needs `(token.issued_at + 1_750_750_750) > user.admin_logout_at`
   * A full non-admin token needs `(token.issued_at + 1_750_750_750) > user.logout_at`
   * A short non-admin token needs `(token.issued_at + 1_750_750_750) > user.last_nonce_at`
 
-Servers should keep a current key and the previous day's and accept tokens signed with either.  This ensures that tokens are always valid for their full lifetime regardless of time of day.  Keys should be generated with the best random generator available.  28 bytes (224 bits) is the minimum, ideally 64 bytes (512 bits, the SHA-224 block size).
+Servers should keep two keys: current day and previous day, in an agreed-upon time zone (i.e. UTC) and accept tokens signed with either key.  This ensures that tokens are always valid for their full lifetime regardless of time of day.  Keys should be generated with the best random generator available.  28 bytes (224 bits) is the minimum, ideally 64 bytes (512 bits, the SHA-224 block size).
 
 ### Short Tokens
 
 Tokens with a truncated 128-bit signature should be considered "one-time use" or "handoff" tokens (similar to a NONCE), intended for URLs sent by e-mail such as login, verification or password reset links.  Web sites should not accept short tokens in HTTP session cookies.  Web sites receiving short tokens via URL should:
 
 1. Display a doorway page greeting the user, which:
+  * Sends HTTP header `Referrer-Policy: no-referrer`
   * Performs no action
   * Displays a confirmation that this is a secure login process
   * Displays a summary of the action about to be taken, if any
@@ -110,7 +112,13 @@ For example, a password reset link short token "ABC" might be sent as "ABC" on t
 
 * The scope of BWT is limited to stateless authentication with logout ability. The only possible payload fields are thus for expiration and identification.
 
+* Confidentiality is outside the scope of BWT.  It is up to applications to allocate user IDs pseudo-randomly if confidentiality is required.
+
+* Like JWT, there is no client binding, so a stolen full token offers no replay protection and is reusable from anywhere until logout or expiration.  Since a growing number of clients have variable characteristics (i.e. multiple origin IP addresses) this compromise was deemed necessary.
+
 * Truncating HMAC-SHA-224 to 128 bits is acceptable per RFC 2104 §5 (output ≥ half the hash length, ≥ 80 bits) and NIST SP 800-107 Rev. 1 §5.3.4, providing 2<sup>128</sup> MAC forgery resistance.  (Note: NIST SP 800-107 Rev. 1 is scheduled for withdrawal; its guidance is being migrated to CMVP Implementation Guidance.)
+
+* Short tokens used in URLs are likely going to be exposed in log files, browser history and referrer headers.  BWT's main mitigation is the one-time use invalidation using the `last_nonce_at` user field, and to a lesser extent, the `Referrer-Policy` HTTP header.
 
 * The time offset of 1,750,750,750 seconds was chosen to keep timestamps smaller and avoid typos in this constant itself.  This brings Epoch around June 2025, which was before this specification was finalized.
 

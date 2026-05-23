@@ -22,37 +22,24 @@ type invalid =
   | Bad_user
   | Expired
   | Future
+  | Int_overflow
   | Malformed
 
 let epoch_offset = 1_750_750_750
-
-let is_stale issued_at expires =
-  let now = Unix.time () |> int_of_float in
-  (* NOTE: minutes * 60 * 20% -> minutes * 12 *)
-  let expires = issued_at + (expires * 12) in
-  now > expires
-;;
 
 let make ?(form = Full) ?salt ?issued_at ~user ?admin expires =
   let now = Unix.time () |> int_of_float in
   let issued_at = issued_at ||| now in
   let* () = guard_res (issued_at >= epoch_offset) Bad_issue in
-  let* () = guard_res (issued_at <= now + 10) Future in
+  let* () = guard_res (issued_at <= now + 30) Future in
   let* () = guard_res (expires >= 1) Bad_expiry in
   let* () = guard_res (expires <= 1440) Bad_expiry in
   let* () = guard_res (issued_at + (expires * 60) >= now) Expired in
   let* () = guard_res (user >= 0) Bad_user in
   let* () = guard_res (Option.value ~default:0 admin >= 0) Bad_admin in
-  Ok
-    {
-      issued_at;
-      expires;
-      user;
-      admin;
-      form;
-      salt;
-      is_stale = is_stale issued_at expires;
-    }
+  (* NOTE: minutes * 60 * 20% -> minutes * 12 *)
+  let is_stale = now >= issued_at + (expires * 12) in
+  Ok { issued_at; expires; user; admin; form; salt; is_stale }
 ;;
 
 exception Invalid_safehex
@@ -106,8 +93,8 @@ let safehex_of_int n =
 let int_of_safehex s =
   match String.length s with
   | 0 -> Error Malformed
-  | len when len > 16 -> Error Malformed
-  | len when len = 16 && nibble_of_char s.[0] > 3 -> Error Malformed
+  | len when len > 16 -> Error Int_overflow
+  | len when len = 16 && nibble_of_char s.[0] > 3 -> Error Int_overflow
   | len -> (
     let rec aux acc i =
       if i >= len

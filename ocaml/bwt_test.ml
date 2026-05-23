@@ -43,6 +43,7 @@ let pp_invalid fmt = function
   | Bwt.Bad_user -> Fmt.string fmt "Bad_user"
   | Bwt.Expired -> Fmt.string fmt "Expired"
   | Bwt.Future -> Fmt.string fmt "Future"
+  | Bwt.Int_overflow -> Fmt.string fmt "Int_overflow"
   | Bwt.Malformed -> Fmt.string fmt "Malformed"
 ;;
 
@@ -96,7 +97,16 @@ let test_int_of_safehex_invalid () =
   Alcotest.(check (result int invalid_t))
     "hex letter" (Error Malformed) (Bwt.int_of_safehex "A");
   Alcotest.(check (result int invalid_t))
-    "mixed valid/invalid" (Error Malformed) (Bwt.int_of_safehex "GA")
+    "mixed valid/invalid" (Error Malformed) (Bwt.int_of_safehex "GA");
+  Alcotest.(check (result int invalid_t))
+    "17 chars overflow" (Error Int_overflow)
+    (Bwt.int_of_safehex "HHGGGGGGGGGGGGGGG");
+  Alcotest.(check (result int invalid_t))
+    "2^62 overflow" (Error Int_overflow)
+    (Bwt.int_of_safehex "LGGGGGGGGGGGGGGG");
+  Alcotest.(check (result int invalid_t))
+    "max_int accepted" (Ok max_int)
+    (Bwt.int_of_safehex "KZZZZZZZZZZZZZZZ")
 ;;
 
 let qcheck_safehex_roundtrip =
