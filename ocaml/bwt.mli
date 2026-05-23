@@ -1,6 +1,6 @@
 (** Binary Web Tokens
 
-    OCaml reference implementation of Binary Web Tokens.
+    OCaml implementation of Binary Web Tokens.
 
     Integer width caveat: OCaml's [int] is 63 bits signed on 64-bit platforms,
     so the full unsigned 64-bit range cannot be represented. This module is
@@ -15,7 +15,7 @@ type t = private {
   user: int;
   admin: int option;
   form: form;
-  salt: string option;
+  salt: string;
   is_stale: bool; (* True if 20%+ of expiry when [make] or [decode] was called *)
 }
 
@@ -33,8 +33,9 @@ type invalid =
   | Malformed
 
 (** [make ?form ?salt ?issued_at ?admin ~user expires] constructs a new token.
-    [?form] defaults to [Full]. [issued_at] is in seconds since UNIX Epoch and
-    defaults to now: this module handles the offset internally. *)
+    [?form] defaults to [Full]. [salt] defaults to [""]. [issued_at] is in
+    seconds since UNIX Epoch and defaults to now: this module handles the offset
+    internally. *)
 val make :
   ?form:form ->
   ?salt:string ->
@@ -49,19 +50,27 @@ val make :
     negative. *)
 val safehex_of_int : int -> string
 
-(** [int_of_safehex s] decodes a safe-hex string to an integer. Returns [None]
+(** [int_of_safehex s] decodes a safe-hex string to an integer. Returns an error
     if [s] is empty or contains any character outside safe-hex. *)
 val int_of_safehex : string -> (int, invalid) result
 
 (** [encode ~today t] returns the signed token [t]. [today] is the current
-    server signing key. *)
+    server signing key. [today] must be between 64 and 128 bytes in size, or
+    else [Invalid_argument] is raised. *)
 val encode : today:string -> t -> string
 
-(** [decode ?salt ?yesterday ~today s] verifies the signature of [s] against
-    [today] (optionally falling back to [yesterday]) and parses its payload,
-    using [salt] if provided. *)
+(** [decode ?salt ?form ?yesterday ~today s] verifies the signature of [s]
+    against [today] (optionally falling back to [yesterday]) and parses its
+    payload, using [salt] which defaults to [""]. Only [form] is accepted,
+    defaulting to [Full].
+
+    Obviously, it is up to the caller to validate the content of the token
+    (user/admin IDs, timestamp comparisons, etc.) This function only verifies
+    that the token is well-formed, has not been tampered with and has not
+    reached its built-in expiration. *)
 val decode :
   ?salt:string ->
+  ?form:form ->
   ?yesterday:string ->
   today:string ->
   string ->

@@ -99,6 +99,8 @@ let test_int_of_safehex_invalid () =
   Alcotest.(check (result int invalid_t))
     "mixed valid/invalid" (Error Malformed) (Bwt.int_of_safehex "GA");
   Alcotest.(check (result int invalid_t))
+    "leading zero" (Error Malformed) (Bwt.int_of_safehex "GG");
+  Alcotest.(check (result int invalid_t))
     "17 chars overflow" (Error Int_overflow)
     (Bwt.int_of_safehex "HHGGGGGGGGGGGGGGG");
   Alcotest.(check (result int invalid_t))
@@ -118,7 +120,7 @@ let qcheck_safehex_roundtrip =
 (* --- Encode --- *)
 
 let test_make_negative_issued_at () =
-  expect_error Bwt.Bad_issue @@ Bwt.make ~issued_at:(-1) ~user:0 30
+  expect_error Bwt.Int_overflow @@ Bwt.make ~issued_at:(-1) ~user:0 30
 ;;
 
 let test_make_zero_expires () =
@@ -138,6 +140,17 @@ let test_make_is_stale_true () =
   let issued = Unix.time () -. 3000.0 |> int_of_float in
   let* t = Bwt.make ~issued_at:issued ~user:0 100 in
   Alcotest.(check bool) "50min into 100min is stale" true t.is_stale
+;;
+
+let test_encode_rejects_bad_key_length () =
+  let* t = Bwt.make ~user:0 30 in
+  ( match Bwt.encode ~today:(String.make 63 'K') t with
+  | exception Invalid_argument _ -> ()
+  | _ -> Alcotest.fail "expected Invalid_argument for short key"
+  );
+  match Bwt.encode ~today:(String.make 129 'K') t with
+  | exception Invalid_argument _ -> ()
+  | _ -> Alcotest.fail "expected Invalid_argument for long key"
 ;;
 
 let test_encode_nonempty () =
@@ -170,7 +183,7 @@ let test_decode_roundtrip_user_only () =
 let test_decode_roundtrip_full () =
   let* t = Bwt.make ~form:Short ~user:42 ~admin:7 720 in
   let s = Bwt.encode ~today:test_key t in
-  let* d = Bwt.decode ~today:test_key s in
+  let* d = Bwt.decode ~form:Short ~today:test_key s in
   Alcotest.(check int) "issued_at" t.issued_at d.issued_at;
   Alcotest.(check int) "expires" t.expires d.expires;
   Alcotest.(check int) "user" 42 d.user;
@@ -247,7 +260,7 @@ let qcheck_encode_decode_roundtrip =
       let form = if is_short then Bwt.Short else Bwt.Full in
       let* t = Bwt.make ~form ~user ?admin expires in
       let s = Bwt.encode ~today:test_key t in
-      let* d = Bwt.decode ~today:test_key s in
+      let* d = Bwt.decode ~form ~today:test_key s in
       d.issued_at = t.issued_at
       && d.expires = t.expires
       && d.user = t.user
@@ -287,6 +300,8 @@ let () =
             test_make_is_stale_false;
           Alcotest.test_case "make is_stale true at 50%" `Quick
             test_make_is_stale_true;
+          Alcotest.test_case "encode rejects bad key length" `Quick
+            test_encode_rejects_bad_key_length;
           Alcotest.test_case "encode produces output" `Quick
             test_encode_nonempty;
         ] );

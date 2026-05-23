@@ -1,6 +1,6 @@
 # OCaml BWT
 
-OCaml reference implementation of Binary Web Tokens.  This module provides:
+OCaml implementation of Binary Web Tokens.  This module provides:
 
 * Safe-hex codec functions
 * Full BWT codec functions

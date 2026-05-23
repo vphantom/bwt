@@ -1,3 +1,4 @@
+let () = if Sys.int_size < 63 then failwith "Bwt: requires a 64-bit platform"
 let ( let* ) = Result.bind
 let ( ||| ) o default = Option.value ~default o
 let[@inline] guard_res c e = if c then Ok () else Error e
@@ -8,7 +9,7 @@ type t = {
   user: int;
   admin: int option;
   form: form;
-  salt: string option;
+  salt: string;
   is_stale: bool; (* True if 20% or more of expiration has elapsed *)
 }
 
@@ -27,14 +28,15 @@ type invalid =
 
 let epoch_offset = 1_750_750_750
 
-let make ?(form = Full) ?salt ?issued_at ~user ?admin expires =
+let make ?(form = Full) ?(salt = "") ?issued_at ~user ?admin expires =
   let now = Unix.time () |> int_of_float in
   let issued_at = issued_at ||| now in
+  let* () = guard_res (issued_at >= 0) Int_overflow in
   let* () = guard_res (issued_at >= epoch_offset) Bad_issue in
-  let* () = guard_res (issued_at <= now + 30) Future in
+  let* () = guard_res (issued_at <= now + 5) Future in
   let* () = guard_res (expires >= 1) Bad_expiry in
   let* () = guard_res (expires <= 1440) Bad_expiry in
-  let* () = guard_res (issued_at + (expires * 60) >= now) Expired in
+  let* () = guard_res (issued_at + (expires * 60) > now) Expired in
   let* () = guard_res (user >= 0) Bad_user in
   let* () = guard_res (Option.value ~default:0 admin >= 0) Bad_admin in
   (* NOTE: minutes * 60 * 20% -> minutes * 12 *)
@@ -91,20 +93,23 @@ let safehex_of_int n =
 ;;
 
 let int_of_safehex s =
-  match String.length s with
-  | 0 -> Error Malformed
-  | len when len > 16 -> Error Int_overflow
-  | len when len = 16 && nibble_of_char s.[0] > 3 -> Error Int_overflow
-  | len -> (
+  match
+    let len = String.length s in
+    if len = 0 then raise_notrace Invalid_safehex;
+    if len > 16 then raise_notrace Exit;
+    if len > 1 && s.[0] = 'G' then raise_notrace Invalid_safehex;
+    let first_nibble = nibble_of_char s.[0] in
+    if len = 16 && first_nibble > 3 then raise_notrace Exit;
     let rec aux acc i =
       if i >= len
       then acc
       else aux ((acc lsl 4) lor nibble_of_char s.[i]) (i + 1)
     in
-    match aux 0 0 with
-    | result -> Ok result
-    | exception Invalid_safehex -> Error Malformed
-  )
+    aux first_nibble 1
+  with
+  | result -> Ok result
+  | exception Exit -> Error Int_overflow
+  | exception Invalid_safehex -> Error Malformed
 ;;
 
 let write_safehex_of_string buf s =
@@ -134,6 +139,9 @@ let sign key payload =
 ;;
 
 let encode ~today t =
+  let kl = String.length today in
+  if kl < 64 || kl > 128
+  then invalid_arg "Bwt.encode: key length must be 64..128";
   let buf = Buffer.create 128 in
   let write_sep buf = Buffer.add_char buf '5' in
   write_safehex_of_int buf (t.issued_at - epoch_offset);
@@ -143,21 +151,17 @@ let encode ~today t =
   write_safehex_of_int buf t.user;
   Option.iter (fun a -> write_sep buf; write_safehex_of_int buf a) t.admin;
   let signature =
-    let raw =
-      match t.salt with
-      | None -> sign today (Buffer.contents buf)
-      | Some s -> sign today (s ^ Buffer.contents buf)
-    in
+    let hmac = sign today (t.salt ^ ":" ^ Buffer.contents buf) in
     match t.form with
-    | Full -> raw
-    | Short -> String.sub raw 0 16
+    | Full -> hmac
+    | Short -> String.sub hmac 0 16
   in
   Buffer.add_char buf '9';
   write_safehex_of_string buf signature;
   Buffer.contents buf
 ;;
 
-let decode ?(salt = "") ?yesterday ~today s =
+let decode ?(salt = "") ?(form = Full) ?yesterday ~today s =
   let len = String.length s in
   let* () = guard_res (len <= 124) Malformed in
   let* payload, sig_hex =
@@ -166,13 +170,14 @@ let decode ?(salt = "") ?yesterday ~today s =
     | _ -> Error Malformed
   in
   let* sig_raw = string_of_safehex sig_hex in
-  let* form =
+  let* form' =
     match String.length sig_raw with
     | 16 -> Ok Short
     | 28 -> Ok Full
     | _ -> Error Malformed
   in
-  let to_sign = salt ^ payload in
+  let* () = guard_res (form = form') Malformed in
+  let to_sign = salt ^ ":" ^ payload in
   let check_sig key =
     let computed = sign key to_sign in
     let truncated =

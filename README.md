@@ -21,9 +21,11 @@ Release 1.0rc4 — 2026-05-22
 Tokens are represented as 2 ASCII sections separated by character '9':
 
 * **Payload** — Series of safe-hex unsigned 64-bit integers, without leading zeros, '5' delimited
-* **Signature** — Safe-hex encoded HMAC-SHA-224 signature of the final trimmed safe-hex encoded payload with delimiters, prefixed by the context salt if any
+* **Signature** — Safe-hex encoded HMAC-SHA-224 signature
 
-A **full token** includes the full 224-bit signature, when length is not a constraint (i.e. HTTP cookies).  A **short token** truncates the signature to its initial 128 bits and is considered to be a one-time use token.  Decoders must accept both lengths.
+The signature takes a salt string (default: `""`) and the final payload (safe-hex values and delimiters), combined as `salt . ":" . payload` to compute an HMAC-SHA-224, itself safe-hex encoded.  The salt is useful context, for example, to avoid tokens intended for a narrow application to be used for another.  (i.e. a short token intended for a password reset page can be made unusable for any other purpose by using a salt of "reset".)
+
+A **full token** includes the full 224-bit signature, when length is not a constraint (i.e. HTTP cookies).  A **short token** truncates the signature to its initial 128 bits and is considered to be a one-time use token.  Decoding functions should let their callers specify which length to require in a given context.
 
 Short token example: `HHHHHHHH5JJJJJ5KKKKKK5LLLLLL9WWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWW`
 
@@ -68,7 +70,7 @@ Several conditions must be met:
 * The signature must match today's or yesterday's server key
 * Implementations must use a constant-time comparison function
 * The token must include exactly 3 or 4 payload fields as of BWT v1
-* The token's `issued_at + 1_750_750_750` should be at most 30 seconds in the future (to allow for clock skew between servers)
+* The token's `issued_at + 1_750_750_750` should be at most 5 seconds in the future (to allow for clock skew between servers)
 * The current timestamp must be less than the token's `issued_at + 1_750_750_750 + (expires * 60)`
 * For admins impersonating users, the token's `issued_at + 1_750_750_750` must be greater than the user's `admin_logout_at`
 * Creation time validation:
@@ -76,7 +78,7 @@ Several conditions must be met:
   * A full non-admin token needs `(token.issued_at + 1_750_750_750) > user.logout_at`
   * A short non-admin token needs `(token.issued_at + 1_750_750_750) > user.last_nonce_at`
 
-Servers should keep two keys: current day and previous day, in an agreed-upon time zone (i.e. UTC) and accept tokens signed with either key.  This ensures that tokens are always valid for their full lifetime regardless of time of day.  Keys should be generated with the best random generator available.  28 bytes (224 bits) is the minimum, ideally 64 bytes (512 bits, the SHA-224 block size).
+Servers should keep two keys: current day and previous day, in an agreed-upon time zone (i.e. UTC) and accept tokens signed with either key.  This ensures that tokens are always valid for their full lifetime regardless of time of day.  Keys should be generated with the best random generator available.  Keys must be between 64 and 128 bytes in size.
 
 ### Short Tokens
 
@@ -91,8 +93,20 @@ Tokens with a truncated 128-bit signature should be considered "one-time use" or
 2. When the user submits the form, the target action page then:
   * Performs no action unless it's serving a POST request
   * Sets the user's `last_nonce_at` (or `admin_logout_at` if there is an `admin_id`) to now, which invalidates all older short (or admin) tokens
-  * Generates a new full token to use as session cookie (with `Secure` and `HttpOnly`)
+  * Generates a new full token to use as session cookie (over HTTPS with at least `SameSite=Lax`, `Secure` and `HttpOnly`) with `issued_at = now + 1`
   * Performs the intended action (login, password reset, etc.)
+
+In order to minimize risks of short tokens being used twice, they should be validated and invalidated in a single atomic storage operation which bypasses any application-layer cache.  For example:
+
+```sql
+UPDATE users
+SET last_nonce_at = GREATEST(last_nonce_at, NOW())
+WHERE id = :user_id
+  AND is_active = TRUE
+  AND last_nonce_at < :issued_at;
+```
+
+...and proceed only if exactly one row was updated.
 
 ### Logout From Everywhere
 
@@ -102,15 +116,9 @@ When a user requests logging out, its `logout_at` (or `admin_logout_at` if the t
 
 There is no need to generate new tokens at every web request, but waiting too long may make sessions time out prematurely from the user's last interaction.  Applications should issue new web tokens when payload data changed or when at least 20% of the expiration time has elapsed, thus preserving 80% of the allowed duration between interactions.
 
-### Optional Context Salt
-
-Especially for short tokens, applications may wish to prefix the payload server-side with a "context salt", a short string describing the context in which the token is being used, not included in the public payload.  This can help avoid tokens intended for a narrow application to be used for another.
-
-For example, a password reset link short token "ABC" might be sent as "ABC" on the wire, but signed as "resetABC".  A password reset page would then also prefix the received payload with "reset" prior to comparing signatures.
-
 ## DESIGN DECISIONS
 
-* The scope of BWT is limited to stateless authentication with logout ability. The only possible payload fields are thus for expiration and identification.
+* The scope of BWT is limited to near-stateless authentication with logout ability. The only possible payload fields are thus for expiration and identification.  Purposes such as CSRF are outside this authentication-only scope.
 
 * Confidentiality is outside the scope of BWT.  It is up to applications to allocate user IDs pseudo-randomly if confidentiality is required.
 
@@ -119,6 +127,8 @@ For example, a password reset link short token "ABC" might be sent as "ABC" on t
 * Truncating HMAC-SHA-224 to 128 bits is acceptable per RFC 2104 §5 (output ≥ half the hash length, ≥ 80 bits) and NIST SP 800-107 Rev. 1 §5.3.4, providing 2<sup>128</sup> MAC forgery resistance.  (Note: NIST SP 800-107 Rev. 1 is scheduled for withdrawal; its guidance is being migrated to CMVP Implementation Guidance.)
 
 * Short tokens used in URLs are likely going to be exposed in log files, browser history and referrer headers.  BWT's main mitigation is the one-time use invalidation using the `last_nonce_at` user field, and to a lesser extent, the `Referrer-Policy` HTTP header.
+
+* Short token validation ignores `logout_at` by design: a logout on device A shouldn't invalidate short tokens for device B.
 
 * The time offset of 1,750,750,750 seconds was chosen to keep timestamps smaller and avoid typos in this constant itself.  This brings Epoch around June 2025, which was before this specification was finalized.
 
