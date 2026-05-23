@@ -20,7 +20,7 @@ type t = private {
 
 and form = Short | Full
 
-type invalid = private
+type invalid =
   | Bad_admin
   | Bad_expiry
   | Bad_issue

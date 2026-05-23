@@ -35,149 +35,159 @@ let test_safehex_of_int_negative () =
   | _ -> Alcotest.fail "expected Invalid_argument"
 ;;
 
+let pp_invalid fmt = function
+  | Bwt.Bad_admin -> Fmt.string fmt "Bad_admin"
+  | Bwt.Bad_expiry -> Fmt.string fmt "Bad_expiry"
+  | Bwt.Bad_issue -> Fmt.string fmt "Bad_issue"
+  | Bwt.Bad_signature -> Fmt.string fmt "Bad_signature"
+  | Bwt.Bad_user -> Fmt.string fmt "Bad_user"
+  | Bwt.Expired -> Fmt.string fmt "Expired"
+  | Bwt.Future -> Fmt.string fmt "Future"
+  | Bwt.Malformed -> Fmt.string fmt "Malformed"
+;;
+
+let invalid_t = Alcotest.testable pp_invalid ( = )
+
+let pp_form fmt = function
+  | Bwt.Short -> Fmt.string fmt "Short"
+  | Bwt.Full -> Fmt.string fmt "Full"
+;;
+
+let form_t = Alcotest.testable pp_form ( = )
+
+let expect_error e = function
+  | Error e' when e = e' -> ()
+  | Error e' ->
+    Alcotest.failf "got error %a, expected %a" pp_invalid e' pp_invalid e
+  | Ok _ -> Alcotest.failf "got ok, expected error %a" pp_invalid e
+;;
+
+let expect_ok = function
+  | Ok _ -> ()
+  | Error e -> Alcotest.failf "got error %a" pp_invalid e
+;;
+
+let ( let* ) v f =
+  match v with
+  | Ok v -> f v
+  | Error e -> Alcotest.failf "got error %a" pp_invalid e
+;;
+
 let test_int_of_safehex_known_values () =
-  Alcotest.(check (option int)) "G" (Some 0) (Bwt.int_of_safehex "G");
-  Alcotest.(check (option int)) "H" (Some 1) (Bwt.int_of_safehex "H");
-  Alcotest.(check (option int)) "Z" (Some 15) (Bwt.int_of_safehex "Z");
-  Alcotest.(check (option int)) "HG" (Some 16) (Bwt.int_of_safehex "HG");
-  Alcotest.(check (option int)) "ZZ" (Some 255) (Bwt.int_of_safehex "ZZ");
-  Alcotest.(check (option int)) "HGG" (Some 256) (Bwt.int_of_safehex "HGG")
+  Alcotest.(check (result int invalid_t)) "G" (Ok 0) (Bwt.int_of_safehex "G");
+  Alcotest.(check (result int invalid_t)) "H" (Ok 1) (Bwt.int_of_safehex "H");
+  Alcotest.(check (result int invalid_t)) "Z" (Ok 15) (Bwt.int_of_safehex "Z");
+  Alcotest.(check (result int invalid_t)) "HG" (Ok 16) (Bwt.int_of_safehex "HG");
+  Alcotest.(check (result int invalid_t)) "ZZ" (Ok 255) (Bwt.int_of_safehex "ZZ");
+  Alcotest.(check (result int invalid_t))
+    "HGG" (Ok 256) (Bwt.int_of_safehex "HGG")
 ;;
 
 let test_int_of_safehex_empty () =
-  Alcotest.(check (option int)) "empty" None (Bwt.int_of_safehex "")
+  Alcotest.(check (result int invalid_t))
+    "empty" (Error Bwt.Malformed) (Bwt.int_of_safehex "")
 ;;
 
 let test_int_of_safehex_invalid () =
-  Alcotest.(check (option int)) "lowercase" None (Bwt.int_of_safehex "g");
-  Alcotest.(check (option int)) "digit" None (Bwt.int_of_safehex "0");
-  Alcotest.(check (option int)) "hex letter" None (Bwt.int_of_safehex "A");
-  Alcotest.(check (option int))
-    "mixed valid/invalid" None (Bwt.int_of_safehex "GA")
+  Alcotest.(check (result int invalid_t))
+    "lowercase" (Error Malformed) (Bwt.int_of_safehex "g");
+  Alcotest.(check (result int invalid_t))
+    "digit" (Error Malformed) (Bwt.int_of_safehex "0");
+  Alcotest.(check (result int invalid_t))
+    "hex letter" (Error Malformed) (Bwt.int_of_safehex "A");
+  Alcotest.(check (result int invalid_t))
+    "mixed valid/invalid" (Error Malformed) (Bwt.int_of_safehex "GA")
 ;;
 
 let qcheck_safehex_roundtrip =
   QCheck.Test.make ~name:"safehex round-trip" ~count:10_000
     QCheck.(int_range 0 max_int)
-    (fun n -> Bwt.int_of_safehex (Bwt.safehex_of_int n) = Some n)
-;;
-
-let test_random_key_length () =
-  Alcotest.(check int) "64 bytes" 64 (String.length (Bwt.random_key ()))
-;;
-
-let test_random_key_uniqueness () =
-  let k1 = Bwt.random_key () in
-  let k2 = Bwt.random_key () in
-  Alcotest.(check bool) "two keys differ" true (k1 <> k2)
+    (fun n -> Bwt.int_of_safehex (Bwt.safehex_of_int n) = Ok n)
 ;;
 
 (* --- Encode --- *)
 
 let test_make_negative_issued_at () =
-  match Bwt.make ~issued_at:(-1.0) 30 with
-  | exception Invalid_argument _ -> ()
-  | _ -> Alcotest.fail "expected Invalid_argument"
+  expect_error Bwt.Bad_issue @@ Bwt.make ~issued_at:(-1) ~user:0 30
 ;;
 
 let test_make_zero_expires () =
-  match Bwt.make 0 with
-  | exception Invalid_argument _ -> ()
-  | _ -> Alcotest.fail "expected Invalid_argument"
+  expect_error Bwt.Bad_expiry @@ Bwt.make ~user:0 0
 ;;
 
 let test_make_negative_expires () =
-  match Bwt.make (-5) with
-  | exception Invalid_argument _ -> ()
-  | _ -> Alcotest.fail "expected Invalid_argument"
-;;
-
-let test_make_admin_without_user () =
-  match Bwt.make ~admin:1 30 with
-  | exception Invalid_argument _ -> ()
-  | _ -> Alcotest.fail "expected Invalid_argument"
+  expect_error Bwt.Bad_expiry @@ Bwt.make ~user:0 (-5)
 ;;
 
 let test_make_is_stale_false () =
-  let t = Bwt.make ~issued_at:(Unix.gettimeofday ()) 100 in
+  let* t = Bwt.make ~user:0 100 in
   Alcotest.(check bool) "fresh token not stale" false t.is_stale
 ;;
 
 let test_make_is_stale_true () =
-  let issued = Unix.gettimeofday () -. 3000.0 in
-  let t = Bwt.make ~issued_at:issued 100 in
+  let issued = Unix.time () -. 3000.0 |> int_of_float in
+  let* t = Bwt.make ~issued_at:issued ~user:0 100 in
   Alcotest.(check bool) "50min into 100min is stale" true t.is_stale
 ;;
 
-let test_encode_str_nonempty () =
-  let t = Bwt.make 30 in
-  let s = Bwt.encode_str ~today:test_key t in
+let test_encode_nonempty () =
+  let* t = Bwt.make ~user:0 30 in
+  let s = Bwt.encode ~today:test_key t in
   Alcotest.(check bool) "non-empty" true (String.length s > 0)
 ;;
 
 (* --- Decode --- *)
 
 let test_decode_roundtrip_minimal () =
-  let t = Bwt.make ~issued_at:(Unix.gettimeofday ()) 30 in
-  let s = Bwt.encode_str ~today:test_key t in
-  match Bwt.decode ~today:test_key s with
-  | None -> Alcotest.fail "decode returned None"
-  | Some d ->
-    Alcotest.(check int) "issued_at" t.issued_at d.issued_at;
-    Alcotest.(check int) "expires" t.expires d.expires;
-    Alcotest.(check (option int)) "user" None d.user;
-    Alcotest.(check (option int)) "admin" None d.admin;
-    Alcotest.(check bool) "is_nonce" false d.is_nonce
+  let* t = Bwt.make ~user:0 30 in
+  let s = Bwt.encode ~today:test_key t in
+  let* d = Bwt.decode ~today:test_key s in
+  Alcotest.(check int) "issued_at" t.issued_at d.issued_at;
+  Alcotest.(check int) "expires" t.expires d.expires;
+  Alcotest.(check int) "user" t.user d.user;
+  Alcotest.(check (option int)) "admin" None d.admin;
+  Alcotest.(check form_t) "form" Bwt.Full d.form
 ;;
 
 let test_decode_roundtrip_user_only () =
-  let t = Bwt.make ~issued_at:(Unix.gettimeofday ()) ~user:1000 30 in
-  let s = Bwt.encode_str ~today:test_key t in
-  match Bwt.decode ~today:test_key s with
-  | None -> Alcotest.fail "decode returned None"
-  | Some d ->
-    Alcotest.(check (option int)) "user" (Some 1000) d.user;
-    Alcotest.(check (option int)) "admin" None d.admin
+  let* t = Bwt.make ~user:1000 30 in
+  let s = Bwt.encode ~today:test_key t in
+  let* d = Bwt.decode ~today:test_key s in
+  Alcotest.(check int) "user" 1000 d.user;
+  Alcotest.(check (option int)) "admin" None d.admin
 ;;
 
 let test_decode_roundtrip_full () =
-  let t =
-    Bwt.make ~issued_at:(Unix.gettimeofday ()) ~user:42 ~admin:7 ~nonce:true 720
-  in
-  let s = Bwt.encode_str ~today:test_key t in
-  match Bwt.decode ~today:test_key s with
-  | None -> Alcotest.fail "decode returned None"
-  | Some d ->
-    Alcotest.(check int) "issued_at" t.issued_at d.issued_at;
-    Alcotest.(check int) "expires" t.expires d.expires;
-    Alcotest.(check (option int)) "user" (Some 42) d.user;
-    Alcotest.(check (option int)) "admin" (Some 7) d.admin;
-    Alcotest.(check bool) "is_nonce" true d.is_nonce
+  let* t = Bwt.make ~form:Short ~user:42 ~admin:7 720 in
+  let s = Bwt.encode ~today:test_key t in
+  let* d = Bwt.decode ~today:test_key s in
+  Alcotest.(check int) "issued_at" t.issued_at d.issued_at;
+  Alcotest.(check int) "expires" t.expires d.expires;
+  Alcotest.(check int) "user" 42 d.user;
+  Alcotest.(check (option int)) "admin" (Some 7) d.admin;
+  Alcotest.(check form_t) "form" Bwt.Short d.form
 ;;
 
 let test_decode_wrong_key () =
-  let t = Bwt.make 30 in
-  let s = Bwt.encode_str ~today:test_key t in
+  let* t = Bwt.make ~user:0 30 in
+  let s = Bwt.encode ~today:test_key t in
   let bad_key = String.make 64 'X' in
-  Alcotest.(check bool)
-    "wrong key -> None" true
-    (Option.is_none (Bwt.decode ~today:bad_key s))
+  expect_error Bwt.Bad_signature @@ Bwt.decode ~today:bad_key s
 ;;
 
 let test_decode_yesterday_fallback () =
   let old_key = String.make 64 'Y' in
-  let t = Bwt.make ~issued_at:(Unix.gettimeofday ()) 30 in
-  let s = Bwt.encode_str ~today:old_key t in
-  match Bwt.decode ~yesterday:old_key ~today:test_key s with
-  | None -> Alcotest.fail "yesterday fallback failed"
-  | Some d -> Alcotest.(check int) "expires" 30 d.expires
+  let* t = Bwt.make ~user:0 30 in
+  let s = Bwt.encode ~today:old_key t in
+  let* d = Bwt.decode ~yesterday:old_key ~today:test_key s in
+  Alcotest.(check int) "expires" 30 d.expires
 ;;
 
 let test_decode_malformed () =
   let check s msg =
     Alcotest.(check bool)
       msg true
-      (Option.is_none (Bwt.decode ~today:test_key s))
+      (Result.is_error (Bwt.decode ~today:test_key s))
   in
   check "" "empty string";
   check "not-a-token" "garbage";
@@ -191,7 +201,7 @@ let test_decode_payload_too_few_fields () =
     let s = forge_token ~key:test_key payload in
     Alcotest.(check bool)
       msg true
-      (Option.is_none (Bwt.decode ~today:test_key s))
+      (Result.is_error (Bwt.decode ~today:test_key s))
   in
   check "" "zero fields rejected";
   check "G" "one field rejected"
@@ -201,44 +211,38 @@ let test_decode_payload_too_many_fields () =
   let s = forge_token ~key:test_key "G5G5G5G5G" in
   Alcotest.(check bool)
     "five fields rejected" true
-    (Option.is_none (Bwt.decode ~today:test_key s))
+    (Result.is_error (Bwt.decode ~today:test_key s))
 ;;
 
 let test_decode_both_keys_invalid () =
-  let t = Bwt.make 30 in
-  let s = Bwt.encode_str ~today:test_key t in
+  let* t = Bwt.make ~user:0 30 in
+  let s = Bwt.encode ~today:test_key t in
   let bad1 = String.make 64 'X' in
   let bad2 = String.make 64 'Y' in
-  Alcotest.(check bool)
-    "both keys rejected" true
-    (Option.is_none (Bwt.decode ~yesterday:bad2 ~today:bad1 s))
+  expect_error Bwt.Bad_signature @@ Bwt.decode ~yesterday:bad2 ~today:bad1 s
 ;;
 
 let test_decode_stale_flag () =
-  let issued = Unix.gettimeofday () -. 3000.0 in
-  let t = Bwt.make ~issued_at:issued 100 in
-  let s = Bwt.encode_str ~today:test_key t in
-  match Bwt.decode ~today:test_key s with
-  | None -> Alcotest.fail "decode returned None"
-  | Some d -> Alcotest.(check bool) "is_stale" true d.is_stale
+  let issued = Unix.time () -. 3000.0 |> int_of_float in
+  let* t = Bwt.make ~issued_at:issued ~user:0 100 in
+  let s = Bwt.encode ~today:test_key t in
+  let* d = Bwt.decode ~today:test_key s in
+  Alcotest.(check bool) "is_stale" true d.is_stale
 ;;
 
 let qcheck_encode_decode_roundtrip =
   QCheck.Test.make ~name:"encode/decode round-trip" ~count:1_000
-    QCheck.(quad (option nat_small) (option nat_small) bool (int_range 1 1440))
-    (fun (user, admin, nonce, expires) ->
-      QCheck.assume (expires >= 1);
-      QCheck.assume (Option.is_none admin || Option.is_some user);
-      let t = Bwt.make ?user ?admin ~nonce expires in
-      let s = Bwt.encode_str ~today:test_key t in
-      match Bwt.decode ~today:test_key s with
-      | None -> false
-      | Some d ->
-        d.issued_at = t.issued_at
-        && d.expires = t.expires
-        && d.user = t.user
-        && d.admin = t.admin
-        && d.is_nonce = t.is_nonce
+    QCheck.(quad nat_small (option nat_small) bool (int_range 1 1440))
+    (fun (user, admin, is_short, expires) ->
+      let form = if is_short then Bwt.Short else Bwt.Full in
+      let* t = Bwt.make ~form ~user ?admin expires in
+      let s = Bwt.encode ~today:test_key t in
+      let* d = Bwt.decode ~today:test_key s in
+      d.issued_at = t.issued_at
+      && d.expires = t.expires
+      && d.user = t.user
+      && d.admin = t.admin
+      && d.form = t.form
     )
 ;;
 
@@ -260,9 +264,6 @@ let () =
           Alcotest.test_case "int_of_safehex invalid" `Quick
             test_int_of_safehex_invalid;
           QCheck_alcotest.to_alcotest qcheck_safehex_roundtrip;
-          Alcotest.test_case "random_key length" `Quick test_random_key_length;
-          Alcotest.test_case "random_key uniqueness" `Quick
-            test_random_key_uniqueness;
         ] );
       ( "Encode",
         [
@@ -272,14 +273,12 @@ let () =
             test_make_zero_expires;
           Alcotest.test_case "make rejects negative expires" `Quick
             test_make_negative_expires;
-          Alcotest.test_case "make rejects admin without user" `Quick
-            test_make_admin_without_user;
           Alcotest.test_case "make is_stale false when fresh" `Quick
             test_make_is_stale_false;
           Alcotest.test_case "make is_stale true at 50%" `Quick
             test_make_is_stale_true;
-          Alcotest.test_case "encode_str produces output" `Quick
-            test_encode_str_nonempty;
+          Alcotest.test_case "encode produces output" `Quick
+            test_encode_nonempty;
         ] );
       ( "Decode",
         [
