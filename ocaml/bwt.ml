@@ -134,14 +134,22 @@ let string_of_safehex s =
   | exception Invalid_safehex -> Error Malformed
 ;;
 
-let sign key payload =
+let[@inline] sign key payload =
   Digestif.SHA224.(hmac_string ~key payload |> to_raw_string)
 ;;
 
+let[@inline] salt_sep = function
+  | Full -> ":"
+  | Short -> "="
+;;
+
+let[@inline] validate_key k =
+  let kl = String.length k in
+  if kl < 64 || kl > 128 then invalid_arg "Bwt: key length must be 64..128"
+;;
+
 let encode ~today t =
-  let kl = String.length today in
-  if kl < 64 || kl > 128
-  then invalid_arg "Bwt.encode: key length must be 64..128";
+  validate_key today;
   let buf = Buffer.create 128 in
   let write_sep buf = Buffer.add_char buf '5' in
   write_safehex_of_int buf (t.issued_at - epoch_offset);
@@ -151,7 +159,7 @@ let encode ~today t =
   write_safehex_of_int buf t.user;
   Option.iter (fun a -> write_sep buf; write_safehex_of_int buf a) t.admin;
   let signature =
-    let hmac = sign today (t.salt ^ ":" ^ Buffer.contents buf) in
+    let hmac = sign today (t.salt ^ salt_sep t.form ^ Buffer.contents buf) in
     match t.form with
     | Full -> hmac
     | Short -> String.sub hmac 0 16
@@ -177,8 +185,9 @@ let decode ?(salt = "") ?(form = Full) ?yesterday ~today s =
     | _ -> Error Malformed
   in
   let* () = guard_res (form = form') Malformed in
-  let to_sign = salt ^ ":" ^ payload in
+  let to_sign = salt ^ salt_sep form ^ payload in
   let check_sig key =
+    validate_key key;
     let computed = sign key to_sign in
     let truncated =
       match form with

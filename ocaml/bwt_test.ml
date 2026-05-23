@@ -2,12 +2,14 @@ let test_key = String.make 64 'K'
 
 (** Forge a token with a valid signature but arbitrary payload. *)
 let forge_token ~key payload =
-  let raw = Digestif.SHA224.(hmac_string ~key payload |> to_raw_string) in
+  let raw =
+    Digestif.SHA224.(hmac_string ~key (":" ^ payload) |> to_raw_string)
+  in
   let alphabet = "GHJKLMNPQRSTVWXZ" in
   let buf = Buffer.create 80 in
   Buffer.add_string buf payload;
-  Buffer.add_char buf '6';
-  for i = 0 to 15 do
+  Buffer.add_char buf '9';
+  for i = 0 to 27 do
     let b = Char.code raw.[i] in
     Buffer.add_char buf alphabet.[b lsr 4];
     Buffer.add_char buf alphabet.[b land 0xf]
@@ -215,8 +217,8 @@ let test_decode_malformed () =
   check "" "empty string";
   check "not-a-token" "garbage";
   check "GG5GG" "no signature separator";
-  check "GG6" "empty signature";
-  check "6GGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG" "empty payload"
+  check "GG9" "empty signature";
+  check "9GGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG" "empty payload"
 ;;
 
 let test_decode_payload_too_few_fields () =

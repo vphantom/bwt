@@ -23,11 +23,11 @@ Tokens are represented as 2 ASCII sections separated by character '9':
 * **Payload** — Series of safe-hex unsigned 64-bit integers, without leading zeros, '5' delimited
 * **Signature** — Safe-hex encoded HMAC-SHA-224 signature
 
-The signature takes a salt string (default: `""`) and the final payload (safe-hex values and delimiters), combined as `salt . ":" . payload` to compute an HMAC-SHA-224, itself safe-hex encoded.  The salt is useful context, for example, to avoid tokens intended for a narrow application to be used for another.  (i.e. a short token intended for a password reset page can be made unusable for any other purpose by using a salt of "reset".)
-
 A **full token** includes the full 224-bit signature, when length is not a constraint (i.e. HTTP cookies).  A **short token** truncates the signature to its initial 128 bits and is considered to be a one-time use token.  Decoding functions should let their callers specify which length to require in a given context.
 
 Short token example: `HHHHHHHH5JJJJJ5KKKKKK5LLLLLL9WWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWW`
+
+Signatures take a salt string (default: `""`) and the final payload (safe-hex values and delimiters), combined as `salt . sep . payload` to compute an HMAC-SHA-224, itself safe-hex encoded.  Here `sep` is `:` for full tokens and `=` for short tokens.  The salt avoids tokens intended for a narrow application to be used for another.  (i.e. a short token intended for a password reset page can be made unusable for any other purpose by using a salt of "reset" not used elsewhere.)
 
 The maximum length of a token string is thus 124 bytes: `(4 * (64/4))` payload characters, 4 separators, `(224/4)` signature characters.
 
@@ -78,7 +78,7 @@ Several conditions must be met:
   * A full non-admin token needs `(token.issued_at + 1_750_750_750) > user.logout_at`
   * A short non-admin token needs `(token.issued_at + 1_750_750_750) > user.last_nonce_at`
 
-Servers should keep two keys: current day and previous day, in an agreed-upon time zone (i.e. UTC) and accept tokens signed with either key.  This ensures that tokens are always valid for their full lifetime regardless of time of day.  Keys should be generated with the best random generator available.  Keys must be between 64 and 128 bytes in size.
+Servers should keep two keys: current day and previous day, in an agreed-upon time zone (i.e. UTC) and accept tokens signed with either key.  This ensures that tokens are always valid for their full lifetime regardless of time of day.  Keys should be generated with a cryptographically secure random source.  Keys must be between 64 and 128 bytes in size.
 
 ### Short Tokens
 
@@ -131,6 +131,8 @@ There is no need to generate new tokens at every web request, but waiting too lo
 * Short token validation ignores `logout_at` by design: a logout on device A shouldn't invalidate short tokens for device B.
 
 * The time offset of 1,750,750,750 seconds was chosen to keep timestamps smaller and avoid typos in this constant itself.  This brings Epoch around June 2025, which was before this specification was finalized.
+
+* The same form, context and payload during the same second produce identical tokens; they are not unique identifiers.
 
 ## ACKNOWLEDGMENTS
 
