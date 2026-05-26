@@ -4,6 +4,8 @@
 
 Inspired by the basic principles of JSON Web Tokens, but with an explicit requirement for server-side information in order to guarantee timely logouts, all in a format compact enough to use in e-mail verification links and cookies.
 
+BWT authenticates users. It does not provide CSRF protection, request authorization, form integrity, clickjacking protection, or replay protection for full session cookies. Applications using BWT in cookies must implement their own web security controls.
+
 ## SPECIFICATION
 
 ### Status
@@ -27,7 +29,7 @@ A **full token** includes the full 224-bit signature, when length is not a const
 
 Short token example: `HHHHHHHH5JJJJJ5KKKKKK5LLLLLL9WWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWW`
 
-Signatures take a salt string (default: `""`) and the final payload (safe-hex values and delimiters), combined as `salt . sep . payload` to compute an HMAC-SHA-224, itself safe-hex encoded.  Here `sep` is `:` for full tokens and `=` for short tokens.  The salt avoids tokens intended for a narrow application to be used for another.  (i.e. a short token intended for a password reset page can be made unusable for any other purpose by using a salt of "reset" not used elsewhere.)
+Signatures take a salt string (default: `""`) and the final payload (safe-hex values and delimiters), combined as `salt . sep . payload` to compute an HMAC-SHA-224, itself safe-hex encoded.  Here `sep` is `:` for full tokens and `=` for short tokens.  Production deployments should use non-empty salts to distinguish purposes (i.e. password reset vs web session).
 
 The maximum length of a token string is thus 124 bytes: `(4 * (64/4))` payload characters, 4 separators, `(224/4)` signature characters.
 
@@ -67,7 +69,7 @@ Users should not be cached for more than 60 seconds in applications to keep the 
 
 Several conditions must be met:
 
-* The signature must match today's or yesterday's server key
+* The signature must match today's or yesterday's server key (per current server time, regardless of token's `issued_at`)
 * Implementations must use a constant-time comparison function
 * The token must include exactly 3 or 4 payload fields as of BWT v1
 * The token's `issued_at + 1_750_750_750` should be at most 5 seconds in the future (to allow for clock skew between servers)
@@ -100,17 +102,21 @@ In order to minimize risks of short tokens being used twice, they should be vali
 
 ```sql
 UPDATE users
-SET last_nonce_at = GREATEST(last_nonce_at, NOW())
+SET last_nonce_at = GREATEST(last_nonce_at, NOW(), :new_token_issued_at)
 WHERE id = :user_id
   AND is_active = TRUE
-  AND last_nonce_at < :issued_at;
+  AND last_nonce_at < :new_token_issued_at;
 ```
 
 ...and proceed only if exactly one row was updated.
 
 ### Logout From Everywhere
 
-When a user requests logging out, its `logout_at` (or `admin_logout_at` if the token has an `admin_id`) is set to now to invalidate all sessions and the cookie is deleted (`Set-Cookie` with empty content and expiration in the past).
+It's probably worth documenting the distinction between logging out (deleting a cookie) and "logout from everywhere" (also update `logout_at`).  For regular end users however, that distinction is too complex so we need to choose one default; I vote for "everywhere".
+
+That should not update `last_nonce_at` though.
+
+For specific things like password resets, account recovery, suspected compromise, _then_ I would update both timestamps.
 
 ### Refreshing
 
@@ -118,7 +124,7 @@ There is no need to generate new tokens at every web request, but waiting too lo
 
 ## DESIGN DECISIONS
 
-* The scope of BWT is limited to near-stateless authentication with logout ability. The only possible payload fields are thus for expiration and identification.  Purposes such as CSRF are outside this authentication-only scope.
+* The scope of BWT is limited to near-stateless authentication with logout ability. The only possible payload fields are thus for expiration and identification.
 
 * Confidentiality is outside the scope of BWT.  It is up to applications to allocate user IDs pseudo-randomly if confidentiality is required.
 

@@ -187,7 +187,6 @@ let decode ?(salt = "") ?(form = Full) ?yesterday ~today s =
   let* () = guard_res (form = form') Malformed in
   let to_sign = salt ^ salt_sep form ^ payload in
   let check_sig key =
-    validate_key key;
     let computed = sign key to_sign in
     let truncated =
       match form with
@@ -197,6 +196,8 @@ let decode ?(salt = "") ?(form = Full) ?yesterday ~today s =
     Eqaf.equal truncated sig_raw
   in
   let* () =
+    validate_key today;
+    Option.iter validate_key yesterday;
     if check_sig today
     then Ok ()
     else (
