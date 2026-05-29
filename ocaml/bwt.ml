@@ -1,7 +1,14 @@
 let () = if Sys.int_size < 63 then failwith "Bwt: requires a 64-bit platform"
+let ( let@ ) = ( @@ )
 let ( let* ) = Result.bind
 let ( ||| ) o default = Option.value ~default o
-let[@inline] guard_res c e = if c then Ok () else Error e
+let die_arg fmt = Printf.ksprintf invalid_arg ("Bwt: " ^^ fmt)
+let error fmt = Printf.ksprintf (fun s -> Error ("Bwt: " ^ s)) fmt
+(* let die fmt = Printf.ksprintf failwith ("Bwt: " ^^ fmt) *)
+
+let guard_res c fmt =
+  Printf.ksprintf (fun e f -> if c then f () else Error ("Bwt: " ^ e)) fmt
+;;
 
 type t = {
   issued_at: int; (* Encoded as -1,750,750,750 *)
@@ -15,30 +22,19 @@ type t = {
 
 and form = Short | Full
 
-type invalid =
-  | Bad_admin
-  | Bad_expiry
-  | Bad_issue
-  | Bad_signature
-  | Bad_user
-  | Expired
-  | Future
-  | Int_overflow
-  | Malformed
-
 let epoch_offset = 1_750_750_750
 
 let make ?(form = Full) ?(salt = "") ?issued_at ~user ?admin expires =
   let now = Unix.time () |> int_of_float in
   let issued_at = issued_at ||| now in
-  let* () = guard_res (issued_at >= 0) Int_overflow in
-  let* () = guard_res (issued_at >= epoch_offset) Bad_issue in
-  let* () = guard_res (issued_at <= now + 5) Future in
-  let* () = guard_res (expires >= 1) Bad_expiry in
-  let* () = guard_res (expires <= 1440) Bad_expiry in
-  let* () = guard_res (issued_at + (expires * 60) > now) Expired in
-  let* () = guard_res (user >= 0) Bad_user in
-  let* () = guard_res (Option.value ~default:0 admin >= 0) Bad_admin in
+  let@ () = guard_res (issued_at >= 0) "integer overflow" in
+  let@ () = guard_res (issued_at >= epoch_offset) "bad issue" in
+  let@ () = guard_res (issued_at <= now + 5) "future issued_at" in
+  let@ () = guard_res (expires >= 1) "bad expiry: %d" expires in
+  let@ () = guard_res (expires <= 1440) "bad expiry: %d" expires in
+  let@ () = guard_res (issued_at + (expires * 60) > now) "expired" in
+  let@ () = guard_res (user >= 0) "bad user" in
+  let@ () = guard_res (Option.value ~default:0 admin >= 0) "bad admin" in
   (* NOTE: minutes * 60 * 20% -> minutes * 12 *)
   let is_stale = now >= issued_at + (expires * 12) in
   Ok { issued_at; expires; user; admin; form; salt; is_stale }
@@ -108,8 +104,8 @@ let int_of_safehex s =
     aux first_nibble 1
   with
   | result -> Ok result
-  | exception Exit -> Error Int_overflow
-  | exception Invalid_safehex -> Error Malformed
+  | exception Exit -> error "integer overflow"
+  | exception Invalid_safehex -> error "bad safe-hex"
 ;;
 
 let write_safehex_of_string buf s =
@@ -122,7 +118,7 @@ let write_safehex_of_string buf s =
 
 let string_of_safehex s =
   let len = String.length s in
-  let* () = guard_res (len land 1 = 0) Malformed in
+  let@ () = guard_res (len land 1 = 0) "malformed token" in
   match
     String.init (len / 2) (fun i ->
       let hi = nibble_of_char s.[i * 2] in
@@ -131,7 +127,7 @@ let string_of_safehex s =
   )
   with
   | result -> Ok result
-  | exception Invalid_safehex -> Error Malformed
+  | exception Invalid_safehex -> error "bad safe-hex"
 ;;
 
 let[@inline] sign key payload =
@@ -145,7 +141,7 @@ let[@inline] salt_sep = function
 
 let[@inline] validate_key k =
   let kl = String.length k in
-  if kl < 64 || kl > 128 then invalid_arg "Bwt: key length must be 64..128"
+  if kl < 64 || kl > 128 then die_arg "key length not in 64..128: %d" kl
 ;;
 
 let encode ~today t =
@@ -171,20 +167,20 @@ let encode ~today t =
 
 let decode ?(salt = "") ?(form = Full) ?yesterday ~today s =
   let len = String.length s in
-  let* () = guard_res (len <= 124) Malformed in
+  let@ () = guard_res (len <= 124) "token too long" in
   let* payload, sig_hex =
     match String.split_on_char '9' s with
     | [ a; b ] -> Ok (a, b)
-    | _ -> Error Malformed
+    | _ -> Error "malformed token"
   in
   let* sig_raw = string_of_safehex sig_hex in
   let* form' =
     match String.length sig_raw with
     | 16 -> Ok Short
     | 28 -> Ok Full
-    | _ -> Error Malformed
+    | _ -> Error "malformed token"
   in
-  let* () = guard_res (form = form') Malformed in
+  let@ () = guard_res (form = form') "malformed token" in
   let to_sign = salt ^ salt_sep form ^ payload in
   let check_sig key =
     let computed = sign key to_sign in
@@ -203,7 +199,7 @@ let decode ?(salt = "") ?(form = Full) ?yesterday ~today s =
     else (
       match yesterday with
       | Some y when check_sig y -> Ok ()
-      | _ -> Error Bad_signature
+      | _ -> error "bad signature"
     )
   in
   match String.split_on_char '5' payload with
@@ -218,5 +214,5 @@ let decode ?(salt = "") ?(form = Full) ?yesterday ~today s =
     let* user = int_of_safehex usr in
     let* admin = int_of_safehex adm in
     make ~form ~salt ~issued_at:(issued_off + epoch_offset) ~user ~admin expires
-  | _ -> Error Malformed
+  | _ -> Error "malformed token"
 ;;

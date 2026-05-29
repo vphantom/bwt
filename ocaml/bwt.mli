@@ -21,17 +21,6 @@ type t = private {
 
 and form = Short | Full
 
-type invalid =
-  | Bad_admin
-  | Bad_expiry
-  | Bad_issue
-  | Bad_signature
-  | Bad_user
-  | Expired
-  | Future
-  | Int_overflow
-  | Malformed
-
 (** [make ?form ?salt ?issued_at ?admin ~user expires] constructs a new token.
     [?form] defaults to [Full]. [salt] defaults to [""]. [issued_at] is in
     seconds since UNIX Epoch and defaults to now: this module handles the offset
@@ -43,7 +32,7 @@ val make :
   user:int ->
   ?admin:int ->
   int ->
-  (t, invalid) result
+  (t, string) result
 
 (** [safehex_of_int n] encodes non-negative integer [n] as a left-trimmed
     safe-hex string. Zero encodes as ["G"]. Raises [Invalid_argument] if [n] is
@@ -52,7 +41,7 @@ val safehex_of_int : int -> string
 
 (** [int_of_safehex s] decodes a safe-hex string to an integer. Returns an error
     if [s] is empty or contains any character outside safe-hex. *)
-val int_of_safehex : string -> (int, invalid) result
+val int_of_safehex : string -> (int, string) result
 
 (** [encode ~today t] returns the signed token [t]. [today] is the current
     server signing key. [today] must be between 64 and 128 bytes in size, or
@@ -74,4 +63,4 @@ val decode :
   ?yesterday:string ->
   today:string ->
   string ->
-  (t, invalid) result
+  (t, string) result
