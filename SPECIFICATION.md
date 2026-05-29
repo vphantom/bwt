@@ -262,7 +262,7 @@ The payload contains exactly 1 safe-hex integer.  There are no `5` delimiters.
 
 ### 5.3 Salt
 
-The `form_id` string appended with ":" and the safe-hex encoded `rand` serves as the salt (e.g. `"settings"`, `"change-password"`).  This binds the token to a specific form for a specific user; a token generated for one form cannot validate under a different form or user.
+The `form_id` string (i.e. `"settings"`, `"change-password"`) appended with ":" and the safe-hex encoded user ID serves as the salt.  This binds the token to a specific form for a specific user; a token generated for one form cannot validate under a different form or user.
 
 ### 5.4 Validation
 
