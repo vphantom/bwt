@@ -1,4 +1,8 @@
-let () = if Sys.int_size < 63 then failwith "Bwt: requires a 64-bit platform"
+let () =
+  if Sys.int_size < 63 then failwith "Bwt: requires a 64-bit platform";
+  Random.self_init ()
+;;
+
 let ( let@ ) = ( @@ )
 let ( let* ) = Result.bind
 let ( ||| ) o default = Option.value ~default o
@@ -88,7 +92,7 @@ let safehex_of_int n =
   write_safehex_of_int buf n; Buffer.contents buf
 ;;
 
-let int_of_safehex s =
+let safehex_to_int s =
   match
     let len = String.length s in
     if len = 0 then raise_notrace Invalid_safehex;
@@ -204,15 +208,18 @@ let decode ?(salt = "") ?(form = Full) ?yesterday ~today s =
   in
   match String.split_on_char '5' payload with
   | [ iss; exp; usr ] ->
-    let* issued_off = int_of_safehex iss in
-    let* expires = int_of_safehex exp in
-    let* user = int_of_safehex usr in
+    let* issued_off = safehex_to_int iss in
+    let* expires = safehex_to_int exp in
+    let* user = safehex_to_int usr in
+    let@ () =
+      guard_res (issued_off <= max_int - epoch_offset) "integer overflow"
+    in
     make ~form ~salt ~issued_at:(issued_off + epoch_offset) ~user expires
   | [ iss; exp; usr; adm ] ->
-    let* issued_off = int_of_safehex iss in
-    let* expires = int_of_safehex exp in
-    let* user = int_of_safehex usr in
-    let* admin = int_of_safehex adm in
+    let* issued_off = safehex_to_int iss in
+    let* expires = safehex_to_int exp in
+    let* user = safehex_to_int usr in
+    let* admin = safehex_to_int adm in
     make ~form ~salt ~issued_at:(issued_off + epoch_offset) ~user ~admin expires
   | _ -> Error "malformed token"
 ;;

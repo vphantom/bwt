@@ -39,9 +39,9 @@ val make :
     negative. *)
 val safehex_of_int : int -> string
 
-(** [int_of_safehex s] decodes a safe-hex string to an integer. Returns an error
+(** [safehex_to_int s] decodes a safe-hex string to an integer. Returns an error
     if [s] is empty or contains any character outside safe-hex. *)
-val int_of_safehex : string -> (int, string) result
+val safehex_to_int : string -> (int, string) result
 
 (** [encode ~today t] returns the signed token [t]. [today] is the current
     server signing key. [today] must be between 64 and 128 bytes in size, or

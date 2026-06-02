@@ -67,7 +67,7 @@ let today = Mirage_crypto_rng.generate 64 in
 - MLI files should include a brief summary of key design decisions to help future developers get situated quickly.
 - Prefer:
   - Sticking to the Stdlib
-  - Immutability where possible (i.e. a `StringMap` vs a `Hashtbl`)
+  - Immutability where possible
   - TMC vs using `List.rev`
   - `Buffer` or `Printf` vs chains of `^`
   - `function` when matching on the last argument
