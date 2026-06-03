@@ -17,6 +17,13 @@ val safehex_of_int : int -> string
 (** [safehex_to_int s] returns the integer value of the safe-hex string [s]. *)
 val safehex_to_int : string -> (int, string) result
 
+(** [safehex_of_string s] returns the safe-hex string representation of [s]. *)
+val safehex_of_string : string -> string
+
+(** [safehex_to_string s] returns the binary value of the possibly long safe-hex
+    string [s]. *)
+val safehex_to_string : string -> (string, string) result
+
 (** {1 Session Tokens} *)
 
 module Session : sig

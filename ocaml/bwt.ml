@@ -18,7 +18,7 @@ let error fmt = Printf.ksprintf (fun s -> Error ("Bwt." ^ s)) fmt
 (* let die fmt = Printf.ksprintf failwith ("Bwt: " ^^ fmt) *)
 
 let guard_res c fmt =
-  Printf.ksprintf (fun e f -> if c then f () else Error ("Bwt: " ^ e)) fmt
+  Printf.ksprintf (fun e f -> if c then f () else Error ("Bwt." ^ e)) fmt
 ;;
 
 let epoch_offset = 1_750_750_750
@@ -87,8 +87,8 @@ let safehex_to_int s =
     aux first_nibble 1
   with
   | result -> Ok result
-  | exception Exit -> error "integer overflow"
-  | exception Invalid_safehex -> error "bad safe-hex"
+  | exception Exit -> error "safehex: integer overflow"
+  | exception Invalid_safehex -> error "safehex: bad safe-hex"
 ;;
 
 let writehex_string buf s =
@@ -99,9 +99,14 @@ let writehex_string buf s =
   done
 ;;
 
-let string_of_safehex s =
+let safehex_of_string s =
+  let buf = Buffer.create (String.length s * 2) in
+  writehex_string buf s; Buffer.contents buf
+;;
+
+let safehex_to_string s =
   let len = String.length s in
-  let@ () = guard_res (len land 1 = 0) "malformed token" in
+  let@ () = guard_res (len land 1 = 0) "safehex: malformed token" in
   match
     String.init (len / 2) (fun i ->
       let hi = nibble_of_char s.[i * 2] in
@@ -110,7 +115,7 @@ let string_of_safehex s =
   )
   with
   | result -> Ok result
-  | exception Invalid_safehex -> error "bad safe-hex"
+  | exception Invalid_safehex -> error "safehex: bad safe-hex"
 ;;
 
 let split_token str =
@@ -179,7 +184,7 @@ module Session = struct
     let len = String.length str in
     let@ () = guard_res (len <= 124) "Session: token too long" in
     let* payload, sig_hex = split_token str in
-    let* sig_raw = string_of_safehex sig_hex in
+    let* sig_raw = safehex_to_string sig_hex in
     let@ () =
       guard_res (String.length sig_raw = 28) "Session: bad signature length"
     in
@@ -260,7 +265,7 @@ module Link = struct
     let len = String.length str in
     let@ () = guard_res (len <= 83) "Link: token too long" in
     let* payload, sig_hex = split_token str in
-    let* sig_raw = string_of_safehex sig_hex in
+    let* sig_raw = safehex_to_string sig_hex in
     let@ () =
       guard_res (String.length sig_raw = 16) "Link: bad signature length"
     in
@@ -322,7 +327,7 @@ module CSRF = struct
     let len = String.length str in
     let@ () = guard_res (len <= 41) "CSRF: token too long" in
     let* payload, sig_hex = split_token str in
-    let* sig_raw = string_of_safehex sig_hex in
+    let* sig_raw = safehex_to_string sig_hex in
     let@ () =
       guard_res (String.length sig_raw = 12) "CSRF: bad signature length"
     in

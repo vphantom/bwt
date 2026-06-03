@@ -9,7 +9,7 @@
 (test
  (name bwt_test)
  (modules bwt_test)
- (libraries bwt alcotest qcheck qcheck-alcotest))
+ (libraries bwt digestif alcotest qcheck qcheck-alcotest))
 
 (env
  (default
