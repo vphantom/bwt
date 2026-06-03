@@ -1,0 +1,532 @@
+{
+  "spec_version": "1.0rc5",
+  "generated_by": "ocaml/bwt_vectors.ml",
+  "bwt_epoch": 1750750750,
+  "fixed_now": 1760750750,
+  "keys": {
+    "today": "54545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454",
+    "yesterday": "59595959595959595959595959595959595959595959595959595959595959595959595959595959595959595959595959595959595959595959595959595959"
+  },
+  "session": [
+    {
+      "name": "no admin, empty salt, expires=60",
+      "encode": {
+        "key": "today",
+        "salt": "",
+        "now": 1760750750,
+        "user_id": 1,
+        "admin_id": null,
+        "expires": 60
+      },
+      "expected_token": "RQRNQG5KV5H9GGXJJZZRSQVXPSHXHNZJMMLNXJXRWHKPRZHJQVGLLSNGGLKMRZSSHQQR",
+      "decode": { "today": "today", "yesterday": null, "salt": "" },
+      "validate": {
+        "now": 1760750750,
+        "logout_at": 0,
+        "admin_logout_at": null,
+        "expected": "fresh"
+      }
+    },
+    {
+      "name": "with admin, empty salt",
+      "encode": {
+        "key": "today",
+        "salt": "",
+        "now": 1760750750,
+        "user_id": 1,
+        "admin_id": 99,
+        "expires": 60
+      },
+      "expected_token": "RQRNQG5KV5H5NK9QVRSWSNHKQWQGLRSWGSGVQKLNVJWQZPWPPTRVRGWWRMWTVQHRKMRZJKP",
+      "decode": { "today": "today", "yesterday": null, "salt": "" },
+      "validate": {
+        "now": 1760750750,
+        "logout_at": 0,
+        "admin_logout_at": 0,
+        "expected": "fresh"
+      }
+    },
+    {
+      "name": "non-empty salt (session)",
+      "encode": {
+        "key": "today",
+        "salt": "session",
+        "now": 1760750750,
+        "user_id": 1,
+        "admin_id": null,
+        "expires": 60
+      },
+      "expected_token": "RQRNQG5KV5H9JQVQMJMTZMPRKRXZPXJHHLPTPPTRHPKXLRGKLQRSXMNSJRKWZMXKJLKP",
+      "decode": { "today": "today", "yesterday": null, "salt": "session" },
+      "validate": {
+        "now": 1760750750,
+        "logout_at": 0,
+        "admin_logout_at": null,
+        "expected": "fresh"
+      }
+    },
+    {
+      "name": "expires=1 (minimum)",
+      "encode": {
+        "key": "today",
+        "salt": "",
+        "now": 1760750750,
+        "user_id": 1,
+        "admin_id": null,
+        "expires": 1
+      },
+      "expected_token": "RQRNQG5H5H9SSPQGQMGJXRPQTKSRNLLJQPPRMRZHMNRXZVKNNWPKKLHMHQWTSWMQVTS",
+      "decode": { "today": "today", "yesterday": null, "salt": "" },
+      "validate": {
+        "now": 1760750750,
+        "logout_at": 0,
+        "admin_logout_at": null,
+        "expected": "fresh"
+      }
+    },
+    {
+      "name": "expires=1440 (maximum)",
+      "encode": {
+        "key": "today",
+        "salt": "",
+        "now": 1760750750,
+        "user_id": 1,
+        "admin_id": null,
+        "expires": 1440
+      },
+      "expected_token": "RQRNQG5MSG5H9XQKSTPQQXLXVXTHNNQHTQGJPPHQMHRHRKHNNVGLLPGSWGPSTKZNVKHMN",
+      "decode": { "today": "today", "yesterday": null, "salt": "" },
+      "validate": {
+        "now": 1760750750,
+        "logout_at": 0,
+        "admin_logout_at": null,
+        "expected": "fresh"
+      }
+    },
+    {
+      "name": "yesterday key (decode with both)",
+      "encode": {
+        "key": "yesterday",
+        "salt": "",
+        "now": 1760750750,
+        "user_id": 1,
+        "admin_id": null,
+        "expires": 60
+      },
+      "expected_token": "RQRNQG5KV5H9WLLRPPGLPLWVHGZPXWKSTSLQMVTPRVKQQHVJRKNXMXXMSWRLGTWSWPGQ",
+      "decode": { "today": "today", "yesterday": "yesterday", "salt": "" },
+      "validate": {
+        "now": 1760750750,
+        "logout_at": 0,
+        "admin_logout_at": null,
+        "expected": "fresh"
+      }
+    },
+    {
+      "name": "stale (20% of 10 min elapsed)",
+      "encode": {
+        "key": "today",
+        "salt": "",
+        "now": 1760750750,
+        "user_id": 1,
+        "admin_id": null,
+        "expires": 10
+      },
+      "expected_token": "RQRNQG5S5H9LHMRPGLGJNTRSRJPVHPRZRGKLPTJPQNPLHJGVNHPNKGRJXZRHKZKQXQN",
+      "decode": { "today": "today", "yesterday": null, "salt": "" },
+      "validate": {
+        "now": 1760750870,
+        "logout_at": 0,
+        "admin_logout_at": null,
+        "expected": "stale"
+      }
+    },
+    {
+      "name": "large user_id",
+      "encode": {
+        "key": "today",
+        "salt": "",
+        "now": 1760750750,
+        "user_id": 1000000,
+        "admin_id": null,
+        "expires": 60
+      },
+      "expected_token": "RQRNQG5KV5ZLJLG9KZSLMXZXVLWWQHZMNZZNQTRLLTJPTGTVQVZRPNRLWLKWLWTQPWQQJMRW",
+      "decode": { "today": "today", "yesterday": null, "salt": "" },
+      "validate": {
+        "now": 1760750750,
+        "logout_at": 0,
+        "admin_logout_at": null,
+        "expected": "fresh"
+      }
+    }
+  ],
+  "link": [
+    {
+      "name": "action=login, expires=60",
+      "encode": {
+        "key": "today",
+        "action": "login",
+        "now": 1760750750,
+        "user_id": 1,
+        "expires": 60
+      },
+      "expected_token": "RQRNQG5KV5H9ZLVTJRJMGQHJQHSNZRMJLTPHZQGNPSZX",
+      "decode": { "today": "today", "yesterday": null, "action": "login" },
+      "validate": {
+        "now": 1760750750,
+        "last_nonce_at": 0,
+        "expected": "valid"
+      }
+    },
+    {
+      "name": "action=password-reset, expires=1",
+      "encode": {
+        "key": "today",
+        "action": "password-reset",
+        "now": 1760750750,
+        "user_id": 1,
+        "expires": 1
+      },
+      "expected_token": "RQRNQG5H5H9WLZMTLKGVPZMRGWXZHSZPNLHLGMPQJTW",
+      "decode": {
+        "today": "today",
+        "yesterday": null,
+        "action": "password-reset"
+      },
+      "validate": {
+        "now": 1760750750,
+        "last_nonce_at": 0,
+        "expected": "valid"
+      }
+    },
+    {
+      "name": "expires=1440 (maximum)",
+      "encode": {
+        "key": "today",
+        "action": "login",
+        "now": 1760750750,
+        "user_id": 1,
+        "expires": 1440
+      },
+      "expected_token": "RQRNQG5MSG5H9KLTHTPTNQPXVTJGQNKXLLRLJNXKPGVLN",
+      "decode": { "today": "today", "yesterday": null, "action": "login" },
+      "validate": {
+        "now": 1760750750,
+        "last_nonce_at": 0,
+        "expected": "valid"
+      }
+    },
+    {
+      "name": "yesterday key (decode with both)",
+      "encode": {
+        "key": "yesterday",
+        "action": "login",
+        "now": 1760750750,
+        "user_id": 1,
+        "expires": 60
+      },
+      "expected_token": "RQRNQG5KV5H9XQRNQMRJGWPRVQGKNTGKPZVKTLPMSMZM",
+      "decode": {
+        "today": "today",
+        "yesterday": "yesterday",
+        "action": "login"
+      },
+      "validate": {
+        "now": 1760750750,
+        "last_nonce_at": 0,
+        "expected": "valid"
+      }
+    }
+  ],
+  "csrf": [
+    {
+      "name": "rand=0 (minimum)",
+      "encode": {
+        "key": "today",
+        "rand": 0,
+        "user_id": 1,
+        "form_id": "login"
+      },
+      "expected_token": "G9XJQTRTLZKHJNWMWQXJSHXRNQ",
+      "validate": {
+        "today": "today",
+        "yesterday": null,
+        "form_id": "login",
+        "user_id": 1,
+        "expected": "valid"
+      }
+    },
+    {
+      "name": "rand=4294967295 (max uint32)",
+      "encode": {
+        "key": "today",
+        "rand": 4294967295,
+        "user_id": 1,
+        "form_id": "login"
+      },
+      "expected_token": "ZZZZZZZZ9WNKHHMTPLTPVVHNPKLZMRNJW",
+      "validate": {
+        "today": "today",
+        "yesterday": null,
+        "form_id": "login",
+        "user_id": 1,
+        "expected": "valid"
+      }
+    },
+    {
+      "name": "typical (rand=42)",
+      "encode": {
+        "key": "today",
+        "rand": 42,
+        "user_id": 1,
+        "form_id": "login"
+      },
+      "expected_token": "JS9XKLRWSHGQVWJXLLPKMJKPXKQ",
+      "validate": {
+        "today": "today",
+        "yesterday": null,
+        "form_id": "login",
+        "user_id": 1,
+        "expected": "valid"
+      }
+    },
+    {
+      "name": "yesterday key",
+      "encode": {
+        "key": "yesterday",
+        "rand": 42,
+        "user_id": 1,
+        "form_id": "login"
+      },
+      "expected_token": "JS9QKVJSJZXHQJKSMRSWLJLLKPZ",
+      "validate": {
+        "today": "today",
+        "yesterday": "yesterday",
+        "form_id": "login",
+        "user_id": 1,
+        "expected": "valid"
+      }
+    }
+  ],
+  "negative": [
+    {
+      "name": "session token in link decoder",
+      "form": "link",
+      "token": "RQRNQG5KV5H9GGXJJZZRSQVXPSHXHNZJMMLNXJXRWHKPRZHJQVGLLSNGGLKMRZSSHQQR",
+      "should_fail_at": "decode",
+      "decode": { "today": "today", "yesterday": null, "action": "login" }
+    },
+    {
+      "name": "session token in CSRF validator",
+      "form": "csrf",
+      "token": "RQRNQG5KV5H9GGXJJZZRSQVXPSHXHNZJMMLNXJXRWHKPRZHJQVGLLSNGGLKMRZSSHQQR",
+      "should_fail_at": "validate",
+      "validate": {
+        "today": "today",
+        "yesterday": null,
+        "form_id": "login",
+        "user_id": 1
+      }
+    },
+    {
+      "name": "link token in session decoder",
+      "form": "session",
+      "token": "RQRNQG5KV5H9ZLVTJRJMGQHJQHSNZRMJLTPHZQGNPSZX",
+      "should_fail_at": "decode",
+      "decode": { "today": "today", "yesterday": null, "salt": "" }
+    },
+    {
+      "name": "link token in CSRF validator",
+      "form": "csrf",
+      "token": "RQRNQG5KV5H9ZLVTJRJMGQHJQHSNZRMJLTPHZQGNPSZX",
+      "should_fail_at": "validate",
+      "validate": {
+        "today": "today",
+        "yesterday": null,
+        "form_id": "login",
+        "user_id": 1
+      }
+    },
+    {
+      "name": "CSRF token in session decoder",
+      "form": "session",
+      "token": "JS9XKLRWSHGQVWJXLLPKMJKPXKQ",
+      "should_fail_at": "decode",
+      "decode": { "today": "today", "yesterday": null, "salt": "" }
+    },
+    {
+      "name": "CSRF token in link decoder",
+      "form": "link",
+      "token": "JS9XKLRWSHGQVWJXLLPKMJKPXKQ",
+      "should_fail_at": "decode",
+      "decode": { "today": "today", "yesterday": null, "action": "login" }
+    },
+    {
+      "name": "session: tampered payload",
+      "form": "session",
+      "token": "HQRNQG5KV5H9GGXJJZZRSQVXPSHXHNZJMMLNXJXRWHKPRZHJQVGLLSNGGLKMRZSSHQQR",
+      "should_fail_at": "decode",
+      "decode": { "today": "today", "yesterday": null, "salt": "" }
+    },
+    {
+      "name": "session: tampered signature",
+      "form": "session",
+      "token": "RQRNQG5KV5H9GGXJJZZRSQVXPSHXHNZJMMLNXJXRWHKPRZHJQVGLLSNGGLKMRZSSHQQH",
+      "should_fail_at": "decode",
+      "decode": { "today": "today", "yesterday": null, "salt": "" }
+    },
+    {
+      "name": "link: tampered payload",
+      "form": "link",
+      "token": "HQRNQG5KV5H9ZLVTJRJMGQHJQHSNZRMJLTPHZQGNPSZX",
+      "should_fail_at": "decode",
+      "decode": { "today": "today", "yesterday": null, "action": "login" }
+    },
+    {
+      "name": "link: tampered signature",
+      "form": "link",
+      "token": "RQRNQG5KV5H9ZLVTJRJMGQHJQHSNZRMJLTPHZQGNPSZH",
+      "should_fail_at": "decode",
+      "decode": { "today": "today", "yesterday": null, "action": "login" }
+    },
+    {
+      "name": "CSRF: tampered payload",
+      "form": "csrf",
+      "token": "HS9XKLRWSHGQVWJXLLPKMJKPXKQ",
+      "should_fail_at": "validate",
+      "validate": {
+        "today": "today",
+        "yesterday": null,
+        "form_id": "login",
+        "user_id": 1
+      }
+    },
+    {
+      "name": "CSRF: tampered signature",
+      "form": "csrf",
+      "token": "JS9XKLRWSHGQVWJXLLPKMJKPXKH",
+      "should_fail_at": "validate",
+      "validate": {
+        "today": "today",
+        "yesterday": null,
+        "form_id": "login",
+        "user_id": 1
+      }
+    },
+    {
+      "name": "session: wrong salt",
+      "form": "session",
+      "token": "RQRNQG5KV5H9JQVQMJMTZMPRKRXZPXJHHLPTPPTRHPKXLRGKLQRSXMNSJRKWZMXKJLKP",
+      "should_fail_at": "decode",
+      "decode": { "today": "today", "yesterday": null, "salt": "wrong" }
+    },
+    {
+      "name": "link: wrong action",
+      "form": "link",
+      "token": "RQRNQG5KV5H9ZLVTJRJMGQHJQHSNZRMJLTPHZQGNPSZX",
+      "should_fail_at": "decode",
+      "decode": {
+        "today": "today",
+        "yesterday": null,
+        "action": "password-reset"
+      }
+    },
+    {
+      "name": "CSRF: wrong form_id",
+      "form": "csrf",
+      "token": "JS9XKLRWSHGQVWJXLLPKMJKPXKQ",
+      "should_fail_at": "validate",
+      "validate": {
+        "today": "today",
+        "yesterday": null,
+        "form_id": "settings",
+        "user_id": 1
+      }
+    },
+    {
+      "name": "CSRF: wrong user_id",
+      "form": "csrf",
+      "token": "JS9XKLRWSHGQVWJXLLPKMJKPXKQ",
+      "should_fail_at": "validate",
+      "validate": {
+        "today": "today",
+        "yesterday": null,
+        "form_id": "login",
+        "user_id": 999
+      }
+    },
+    {
+      "name": "session: expired",
+      "form": "session",
+      "token": "RQRNQG5S5H9LHMRPGLGJNTRSRJPVHPRZRGKLPTJPQNPLHJGVNHPNKGRJXZRHKZKQXQN",
+      "should_fail_at": "validate",
+      "decode": { "today": "today", "yesterday": null, "salt": "" },
+      "validate": {
+        "now": 1760751351,
+        "logout_at": 0,
+        "admin_logout_at": null
+      }
+    },
+    {
+      "name": "session: future (beyond skew)",
+      "form": "session",
+      "token": "RQRNQS5KV5H9SMPZZWGZJQSPXSTZWVTZSZLPWJLXWJJLSJWQTHVRXJTMJRLNNVKZGXTP",
+      "should_fail_at": "validate",
+      "decode": { "today": "today", "yesterday": null, "salt": "" },
+      "validate": {
+        "now": 1760750750,
+        "logout_at": 0,
+        "admin_logout_at": null
+      }
+    },
+    {
+      "name": "session: logged out",
+      "form": "session",
+      "token": "RQRNQG5KV5H9GGXJJZZRSQVXPSHXHNZJMMLNXJXRWHKPRZHJQVGLLSNGGLKMRZSSHQQR",
+      "should_fail_at": "validate",
+      "decode": { "today": "today", "yesterday": null, "salt": "" },
+      "validate": {
+        "now": 1760750750,
+        "logout_at": 1760750750,
+        "admin_logout_at": null
+      }
+    },
+    {
+      "name": "session: admin logged out",
+      "form": "session",
+      "token": "RQRNQG5KV5H5NK9QVRSWSNHKQWQGLRSWGSGVQKLNVJWQZPWPPTRVRGWWRMWTVQHRKMRZJKP",
+      "should_fail_at": "validate",
+      "decode": { "today": "today", "yesterday": null, "salt": "" },
+      "validate": {
+        "now": 1760750750,
+        "logout_at": 0,
+        "admin_logout_at": 1760750750
+      }
+    },
+    {
+      "name": "link: expired",
+      "form": "link",
+      "token": "RQRNQG5S5H9PKPTRJQGZLQHSKPQMVPWHJMMTHHLNGHR",
+      "should_fail_at": "validate",
+      "decode": { "today": "today", "yesterday": null, "action": "login" },
+      "validate": { "now": 1760751351, "last_nonce_at": 0 }
+    },
+    {
+      "name": "link: future (beyond skew)",
+      "form": "link",
+      "token": "RQRNQS5KV5H9PGHWZNWKQKPWVNTNPHHQLZGXXKVMNVKM",
+      "should_fail_at": "validate",
+      "decode": { "today": "today", "yesterday": null, "action": "login" },
+      "validate": { "now": 1760750750, "last_nonce_at": 0 }
+    },
+    {
+      "name": "link: nonce consumed",
+      "form": "link",
+      "token": "RQRNQG5KV5H9ZLVTJRJMGQHJQHSNZRMJLTPHZQGNPSZX",
+      "should_fail_at": "validate",
+      "decode": { "today": "today", "yesterday": null, "action": "login" },
+      "validate": { "now": 1760750750, "last_nonce_at": 1760750750 }
+    }
+  ]
+}

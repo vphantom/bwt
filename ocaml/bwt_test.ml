@@ -1,3 +1,7 @@
+(* NOTE: I'm using [Yojson.Basic.t] here but that assumes we'll stick to that
+   for iterating through the test vectors. *)
+let vectors = ref (`Assoc [])
+
 (* Safe Hex *)
 
 let test_safehex_of_int_zero () =
@@ -1497,8 +1501,378 @@ let test_session_token_length_125 () =
       "rejected for length" "Bwt.Session: token too long" e
 ;;
 
+let load_vectors () =
+  let path = "test-vectors.json" in
+  vectors := Yojson.Basic.from_file path
+;;
+
+(* --- JSON accessor helpers --- *)
+
+let json_string key = function
+  | `Assoc l -> (
+    match List.assoc_opt key l with
+    | Some (`String s) -> s
+    | _ -> failwith ("missing string: " ^ key))
+  | _ -> failwith "not an object"
+;;
+
+let json_int key = function
+  | `Assoc l -> (
+    match List.assoc_opt key l with
+    | Some (`Int i) -> i
+    | _ -> failwith ("missing int: " ^ key))
+  | _ -> failwith "not an object"
+;;
+
+let json_list key = function
+  | `Assoc l -> (
+    match List.assoc_opt key l with
+    | Some (`List l) -> l
+    | _ -> failwith ("missing list: " ^ key))
+  | _ -> failwith "not an object"
+;;
+
+let json_assoc key = function
+  | `Assoc l -> (
+    match List.assoc_opt key l with
+    | Some (`Assoc _ as a) -> a
+    | _ -> failwith ("missing assoc: " ^ key))
+  | _ -> failwith "not an object"
+;;
+
+let json_int_opt key = function
+  | `Assoc l -> (
+    match List.assoc_opt key l with
+    | Some (`Int i) -> Some i
+    | Some `Null | None -> None
+    | _ -> failwith ("bad optional int: " ^ key))
+  | _ -> failwith "not an object"
+;;
+
+let json_string_opt key = function
+  | `Assoc l -> (
+    match List.assoc_opt key l with
+    | Some (`String s) -> Some s
+    | Some `Null | None -> None
+    | _ -> failwith ("bad optional string: " ^ key))
+  | _ -> failwith "not an object"
+;;
+
+let hex_to_string h =
+  let len = String.length h in
+  let buf = Buffer.create (len / 2) in
+  let digit = function
+    | '0' .. '9' as c -> Char.code c - Char.code '0'
+    | 'a' .. 'f' as c -> Char.code c - Char.code 'a' + 10
+    | _ -> failwith "bad hex char"
+  in
+  for i = 0 to (len / 2) - 1 do
+    let hi = digit h.[2 * i] in
+    let lo = digit h.[2 * i + 1] in
+    Buffer.add_char buf (Char.chr ((hi lsl 4) lor lo))
+  done;
+  Buffer.contents buf
+;;
+
+let vector_key name =
+  json_assoc "keys" !vectors |> json_string name |> hex_to_string
+;;
+
+(* --- Vector tests: metadata --- *)
+
+let test_vectors_metadata () =
+  let v = !vectors in
+  Alcotest.(check string) "spec_version" "1.0rc5" (json_string "spec_version" v);
+  Alcotest.(check string)
+    "generated_by" "ocaml/bwt_vectors.ml" (json_string "generated_by" v);
+  Alcotest.(check int) "bwt_epoch" 1_750_750_750 (json_int "bwt_epoch" v);
+  Alcotest.(check int) "fixed_now" 1_760_750_750 (json_int "fixed_now" v)
+;;
+
+let test_vectors_keys () =
+  let keys = json_assoc "keys" !vectors in
+  let today = json_string "today" keys in
+  let yesterday = json_string "yesterday" keys in
+  (* 64-byte keys → 128 hex chars *)
+  Alcotest.(check int) "today key hex length" 128 (String.length today);
+  Alcotest.(check int) "yesterday key hex length" 128 (String.length yesterday);
+  (* Keys must differ *)
+  Alcotest.(check bool) "keys differ" true (today <> yesterday)
+;;
+
+let test_vectors_known_sections () =
+  let known =
+    [
+      "spec_version"; "generated_by"; "bwt_epoch"; "fixed_now"; "keys";
+      "session"; "link"; "csrf"; "negative";
+    ]
+  in
+  match !vectors with
+  | `Assoc l ->
+    List.iter
+      (fun (k, _) ->
+        if not (List.mem k known) then
+          Alcotest.failf "unknown top-level section in vectors JSON: %s" k)
+      l
+  | _ -> Alcotest.fail "vectors JSON is not an object"
+;;
+
+let test_vectors_negative_known_forms () =
+  let known_forms = [ "session"; "link"; "csrf" ] in
+  json_list "negative" !vectors
+  |> List.iter (fun v ->
+       let name = json_string "name" v in
+       let form = json_string "form" v in
+       if not (List.mem form known_forms) then
+         Alcotest.failf "negative vector %S has unknown form: %s" name form)
+;;
+
+let test_vectors_sections_nonempty () =
+  let v = !vectors in
+  Alcotest.(check bool) "session non-empty" true
+    (json_list "session" v |> List.length > 0);
+  Alcotest.(check bool) "link non-empty" true
+    (json_list "link" v |> List.length > 0);
+  Alcotest.(check bool) "csrf non-empty" true
+    (json_list "csrf" v |> List.length > 0);
+  Alcotest.(check bool) "negative non-empty" true
+    (json_list "negative" v |> List.length > 0)
+;;
+
+(* --- Vector tests: CSRF --- *)
+
+let vector_csrf_positive v =
+  let name = json_string "name" v in
+  Alcotest.test_case name `Quick (fun () ->
+    let enc = json_assoc "encode" v in
+    let expected = json_string "expected_token" v in
+    let val_ = json_assoc "validate" v in
+    (* Encode *)
+    let key = vector_key (json_string "key" enc) in
+    let rand = json_int "rand" enc in
+    let user_id = json_int "user_id" enc in
+    let form_id = json_string "form_id" enc in
+    Alcotest.(check (result string string))
+      "encode" (Ok expected)
+      (Bwt.CSRF.encode ~key ~rand ~user_id form_id);
+    (* Validate *)
+    let today = vector_key (json_string "today" val_) in
+    let yesterday =
+      json_string_opt "yesterday" val_ |> Option.map vector_key
+    in
+    let vform = json_string "form_id" val_ in
+    let vuser = json_int "user_id" val_ in
+    Alcotest.(check (result unit string))
+      "validate" (Ok ())
+      (Bwt.CSRF.validate ?yesterday ~today ~form_id:vform ~user_id:vuser
+         expected))
+;;
+
+let vector_csrf_negative v =
+  let name = json_string "name" v in
+  Alcotest.test_case name `Quick (fun () ->
+    let token = json_string "token" v in
+    let val_ = json_assoc "validate" v in
+    let today = vector_key (json_string "today" val_) in
+    let yesterday =
+      json_string_opt "yesterday" val_ |> Option.map vector_key
+    in
+    let form_id = json_string "form_id" val_ in
+    let user_id = json_int "user_id" val_ in
+    match Bwt.CSRF.validate ?yesterday ~today ~form_id ~user_id token with
+    | Ok () -> Alcotest.fail "expected validation to fail"
+    | Error _ -> ())
+;;
+
+(* --- Vector tests: Session --- *)
+
+let vector_session_positive v =
+  let name = json_string "name" v in
+  Alcotest.test_case name `Quick (fun () ->
+    let enc = json_assoc "encode" v in
+    let expected = json_string "expected_token" v in
+    let dec = json_assoc "decode" v in
+    let val_ = json_assoc "validate" v in
+    (* Encode *)
+    let key = vector_key (json_string "key" enc) in
+    let salt = json_string "salt" enc in
+    let now = json_int "now" enc in
+    let user_id = json_int "user_id" enc in
+    let admin_id = json_int_opt "admin_id" enc in
+    let expires = json_int "expires" enc in
+    Alcotest.(check (result string string))
+      "encode" (Ok expected)
+      (Bwt.Session.encode ~key ~now ~salt ~user_id ?admin_id expires);
+    (* Decode *)
+    let today = vector_key (json_string "today" dec) in
+    let yesterday =
+      json_string_opt "yesterday" dec |> Option.map vector_key
+    in
+    let dec_salt = json_string "salt" dec in
+    (match
+       Bwt.Session.decode ?yesterday ~today ~salt:dec_salt expected
+     with
+     | Error e -> Alcotest.fail ("decode: " ^ e)
+     | Ok t ->
+       Alcotest.(check int) "issued_at" now (Bwt.Session.issued_at t);
+       Alcotest.(check int) "expires" expires (Bwt.Session.expires t);
+       Alcotest.(check int) "user_id" user_id (Bwt.Session.user_id t);
+       Alcotest.(check (option int)) "admin_id" admin_id
+         (Bwt.Session.admin_id t);
+       (* Validate *)
+       let vnow = json_int "now" val_ in
+       let logout_at = json_int "logout_at" val_ in
+       let admin_logout_at = json_int_opt "admin_logout_at" val_ in
+       let expected_result = json_string "expected" val_ in
+       (match expected_result with
+        | "fresh" ->
+          Alcotest.(check (result bool string))
+            "validate" (Ok true)
+            (Bwt.Session.validate ~now:vnow ?admin_logout_at ~logout_at t)
+        | "stale" ->
+          Alcotest.(check (result bool string))
+            "validate" (Ok false)
+            (Bwt.Session.validate ~now:vnow ?admin_logout_at ~logout_at t)
+        | s -> Alcotest.failf "unknown expected result: %s" s)))
+;;
+
+let vector_session_negative v =
+  let name = json_string "name" v in
+  Alcotest.test_case name `Quick (fun () ->
+    let token = json_string "token" v in
+    let fail_at = json_string "should_fail_at" v in
+    let dec = json_assoc "decode" v in
+    let today = vector_key (json_string "today" dec) in
+    let yesterday =
+      json_string_opt "yesterday" dec |> Option.map vector_key
+    in
+    let salt = json_string "salt" dec in
+    match fail_at with
+    | "decode" -> (
+      match Bwt.Session.decode ?yesterday ~today ~salt token with
+      | Ok _ -> Alcotest.fail "expected decode to fail"
+      | Error _ -> ())
+    | "validate" -> (
+      match Bwt.Session.decode ?yesterday ~today ~salt token with
+      | Error e -> Alcotest.fail ("decode should succeed: " ^ e)
+      | Ok t ->
+        let val_ = json_assoc "validate" v in
+        let now = json_int "now" val_ in
+        let logout_at = json_int "logout_at" val_ in
+        let admin_logout_at = json_int_opt "admin_logout_at" val_ in
+        (match
+           Bwt.Session.validate ~now ?admin_logout_at ~logout_at t
+         with
+         | Ok _ -> Alcotest.fail "expected validate to fail"
+         | Error _ -> ()))
+    | s -> Alcotest.failf "unknown should_fail_at: %s" s)
+;;
+
+let vector_session_tests () =
+  let positives =
+    json_list "session" !vectors |> List.map vector_session_positive
+  in
+  let negatives =
+    json_list "negative" !vectors
+    |> List.filter (fun v -> json_string "form" v = "session")
+    |> List.map vector_session_negative
+  in
+  positives @ negatives
+;;
+
+(* --- Vector tests: Link --- *)
+
+let vector_link_positive v =
+  let name = json_string "name" v in
+  Alcotest.test_case name `Quick (fun () ->
+    let enc = json_assoc "encode" v in
+    let expected = json_string "expected_token" v in
+    let dec = json_assoc "decode" v in
+    let val_ = json_assoc "validate" v in
+    (* Encode *)
+    let key = vector_key (json_string "key" enc) in
+    let now = json_int "now" enc in
+    let action = json_string "action" enc in
+    let user_id = json_int "user_id" enc in
+    let expires = json_int "expires" enc in
+    Alcotest.(check (result string string))
+      "encode" (Ok expected)
+      (Bwt.Link.encode ~key ~now ~action ~user_id expires);
+    (* Decode *)
+    let today = vector_key (json_string "today" dec) in
+    let yesterday =
+      json_string_opt "yesterday" dec |> Option.map vector_key
+    in
+    let dec_action = json_string "action" dec in
+    (match Bwt.Link.decode ?yesterday ~today ~action:dec_action expected with
+     | Error e -> Alcotest.fail ("decode: " ^ e)
+     | Ok t ->
+       Alcotest.(check int) "issued_at" now (Bwt.Link.issued_at t);
+       Alcotest.(check int) "expires" expires (Bwt.Link.expires t);
+       Alcotest.(check int) "user_id" user_id (Bwt.Link.user_id t);
+       (* Validate *)
+       let vnow = json_int "now" val_ in
+       let last_nonce_at = json_int "last_nonce_at" val_ in
+       let expected_result = json_string "expected" val_ in
+       match expected_result with
+       | "valid" ->
+         Alcotest.(check (result unit string))
+           "validate" (Ok ())
+           (Bwt.Link.validate ~now:vnow ~last_nonce_at t)
+       | s -> Alcotest.failf "unknown expected result: %s" s))
+;;
+
+let vector_link_negative v =
+  let name = json_string "name" v in
+  Alcotest.test_case name `Quick (fun () ->
+    let token = json_string "token" v in
+    let fail_at = json_string "should_fail_at" v in
+    let dec = json_assoc "decode" v in
+    let today = vector_key (json_string "today" dec) in
+    let yesterday =
+      json_string_opt "yesterday" dec |> Option.map vector_key
+    in
+    let action = json_string "action" dec in
+    match fail_at with
+    | "decode" -> (
+      match Bwt.Link.decode ?yesterday ~today ~action token with
+      | Ok _ -> Alcotest.fail "expected decode to fail"
+      | Error _ -> ())
+    | "validate" -> (
+      match Bwt.Link.decode ?yesterday ~today ~action token with
+      | Error e -> Alcotest.fail ("decode should succeed: " ^ e)
+      | Ok t ->
+        let val_ = json_assoc "validate" v in
+        let now = json_int "now" val_ in
+        let last_nonce_at = json_int "last_nonce_at" val_ in
+        (match Bwt.Link.validate ~now ~last_nonce_at t with
+         | Ok () -> Alcotest.fail "expected validate to fail"
+         | Error _ -> ()))
+    | s -> Alcotest.failf "unknown should_fail_at: %s" s)
+;;
+
+let vector_link_tests () =
+  let positives = json_list "link" !vectors |> List.map vector_link_positive in
+  let negatives =
+    json_list "negative" !vectors
+    |> List.filter (fun v -> json_string "form" v = "link")
+    |> List.map vector_link_negative
+  in
+  positives @ negatives
+;;
+
+let vector_csrf_tests () =
+  let positives = json_list "csrf" !vectors |> List.map vector_csrf_positive in
+  let negatives =
+    json_list "negative" !vectors
+    |> List.filter (fun v -> json_string "form" v = "csrf")
+    |> List.map vector_csrf_negative
+  in
+  positives @ negatives
+;;
+
 let () =
-  Alcotest.run "BWT"
+  let direct_tests =
     [
       ( "Safe-Hex",
         [
@@ -1724,4 +2098,39 @@ let () =
           QCheck_alcotest.to_alcotest qcheck_session_roundtrip;
         ] );
     ]
+  in
+  let suite = try Sys.getenv "BWT_TESTS" with Not_found -> "all" in
+  let vector_tests =
+    match suite with
+    | "vectors" | "all" -> (
+      load_vectors ();
+    [
+      ( "Vectors/Meta",
+        [
+          Alcotest.test_case "metadata" `Quick test_vectors_metadata;
+          Alcotest.test_case "keys" `Quick test_vectors_keys;
+          Alcotest.test_case "known sections only" `Quick
+            test_vectors_known_sections;
+          Alcotest.test_case "negative vectors have known forms" `Quick
+            test_vectors_negative_known_forms;
+          Alcotest.test_case "sections non-empty" `Quick
+            test_vectors_sections_nonempty;
+        ] );
+      ("Vectors/Session", vector_session_tests ());
+      ("Vectors/Link", vector_link_tests ());
+      ("Vectors/CSRF", vector_csrf_tests ());
+    ]
+    )
+    | _ -> []
+  in
+  let tests =
+    match suite with
+    | "direct" -> direct_tests
+    | "vectors" -> vector_tests
+    | "all" -> direct_tests @ vector_tests
+    | _ ->
+      Printf.eprintf "Valid values for $BWT_TEST: all direct vectors\n";
+      exit 1
+  in
+  Alcotest.run "BWT" tests
 ;;

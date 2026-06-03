@@ -1,7 +1,7 @@
 (library
  (name bwt)
  (wrapped false)
- (modules :standard \ bwt_test)
+ (modules :standard \ bwt_test bwt_vectors)
  (libraries digestif eqaf unix)
  (instrumentation
   (backend bisect_ppx)))
@@ -9,7 +9,13 @@
 (test
  (name bwt_test)
  (modules bwt_test)
- (libraries bwt digestif alcotest qcheck qcheck-alcotest))
+ (deps test-vectors.json)
+ (libraries bwt digestif yojson alcotest qcheck qcheck-alcotest))
+
+(executable
+ (name bwt_vectors)
+ (modules bwt_vectors)
+ (libraries bwt yojson))
 
 (env
  (default
