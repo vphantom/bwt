@@ -254,7 +254,6 @@ let neg_session_decode ~name token ~salt =
   `Assoc
     [
       "name", `String name;
-      "form", `String "session";
       "token", `String token;
       "should_fail_at", `String "decode";
       ( "decode",
@@ -268,7 +267,6 @@ let neg_session_validate ~name token ~salt ~now ~logout_at ?admin_logout_at () =
   `Assoc
     [
       "name", `String name;
-      "form", `String "session";
       "token", `String token;
       "should_fail_at", `String "validate";
       ( "decode",
@@ -289,7 +287,6 @@ let neg_link_decode ~name token ~action =
   `Assoc
     [
       "name", `String name;
-      "form", `String "link";
       "token", `String token;
       "should_fail_at", `String "decode";
       ( "decode",
@@ -306,7 +303,6 @@ let neg_link_validate ~name token ~action ~now ~last_nonce_at =
   `Assoc
     [
       "name", `String name;
-      "form", `String "link";
       "token", `String token;
       "should_fail_at", `String "validate";
       ( "decode",
@@ -325,7 +321,6 @@ let neg_csrf ~name token ~form_id ~user_id =
   `Assoc
     [
       "name", `String name;
-      "form", `String "csrf";
       "token", `String token;
       "should_fail_at", `String "validate";
       ( "validate",
@@ -339,77 +334,62 @@ let neg_csrf ~name token ~form_id ~user_id =
     ]
 ;;
 
-let negative_vectors () =
-  (* Reference tokens for cross-form and tampering tests *)
-  let session_tok =
-    Bwt.Session.encode ~key:key_today ~now:fixed_now ~user_id:1 60 |> unwrap
-  in
-  let session_admin_tok =
-    Bwt.Session.encode ~key:key_today ~now:fixed_now ~user_id:1 ~admin_id:99 60
-    |> unwrap
-  in
-  let session_salt_tok =
-    Bwt.Session.encode ~key:key_today ~now:fixed_now ~salt:"session" ~user_id:1
-      60
-    |> unwrap
-  in
-  let session_10min_tok =
-    Bwt.Session.encode ~key:key_today ~now:fixed_now ~user_id:1 10 |> unwrap
-  in
-  let session_future_tok =
-    Bwt.Session.encode ~key:key_today ~now:(fixed_now + 10) ~user_id:1 60
-    |> unwrap
-  in
-  let link_tok =
-    Bwt.Link.encode ~key:key_today ~now:fixed_now ~action:"login" ~user_id:1 60
-    |> unwrap
-  in
-  let link_10min_tok =
-    Bwt.Link.encode ~key:key_today ~now:fixed_now ~action:"login" ~user_id:1 10
-    |> unwrap
-  in
-  let link_future_tok =
-    Bwt.Link.encode ~key:key_today ~now:(fixed_now + 10) ~action:"login"
-      ~user_id:1 60
-    |> unwrap
-  in
-  let csrf_tok =
-    Bwt.CSRF.encode ~key:key_today ~rand:42 ~user_id:1 "login" |> unwrap
-  in
+(* Reference tokens for cross-form and tampering tests *)
+
+let session_tok =
+  Bwt.Session.encode ~key:key_today ~now:fixed_now ~user_id:1 60 |> unwrap
+;;
+
+let session_admin_tok =
+  Bwt.Session.encode ~key:key_today ~now:fixed_now ~user_id:1 ~admin_id:99 60
+  |> unwrap
+;;
+
+let session_salt_tok =
+  Bwt.Session.encode ~key:key_today ~now:fixed_now ~salt:"session" ~user_id:1 60
+  |> unwrap
+;;
+
+let session_10min_tok =
+  Bwt.Session.encode ~key:key_today ~now:fixed_now ~user_id:1 10 |> unwrap
+;;
+
+let session_future_tok =
+  Bwt.Session.encode ~key:key_today ~now:(fixed_now + 10) ~user_id:1 60
+  |> unwrap
+;;
+
+let link_tok =
+  Bwt.Link.encode ~key:key_today ~now:fixed_now ~action:"login" ~user_id:1 60
+  |> unwrap
+;;
+
+let link_10min_tok =
+  Bwt.Link.encode ~key:key_today ~now:fixed_now ~action:"login" ~user_id:1 10
+  |> unwrap
+;;
+
+let link_future_tok =
+  Bwt.Link.encode ~key:key_today ~now:(fixed_now + 10) ~action:"login"
+    ~user_id:1 60
+  |> unwrap
+;;
+
+let csrf_tok =
+  Bwt.CSRF.encode ~key:key_today ~rand:42 ~user_id:1 "login" |> unwrap
+;;
+
+let session_negatives () =
   [
-    (* --- Cross-form rejection --- *)
-    neg_link_decode ~name:"session token in link decoder" session_tok
-      ~action:"login";
-    neg_csrf ~name:"session token in CSRF validator" session_tok
-      ~form_id:"login" ~user_id:1;
     neg_session_decode ~name:"link token in session decoder" link_tok ~salt:"";
-    neg_csrf ~name:"link token in CSRF validator" link_tok ~form_id:"login"
-      ~user_id:1;
     neg_session_decode ~name:"CSRF token in session decoder" csrf_tok ~salt:"";
-    neg_link_decode ~name:"CSRF token in link decoder" csrf_tok ~action:"login";
-    (* --- Tampered tokens --- *)
     neg_session_decode ~name:"session: tampered payload" (tamper session_tok 0)
       ~salt:"";
     neg_session_decode ~name:"session: tampered signature"
       (tamper session_tok (String.length session_tok - 1))
       ~salt:"";
-    neg_link_decode ~name:"link: tampered payload" (tamper link_tok 0)
-      ~action:"login";
-    neg_link_decode ~name:"link: tampered signature"
-      (tamper link_tok (String.length link_tok - 1))
-      ~action:"login";
-    neg_csrf ~name:"CSRF: tampered payload" (tamper csrf_tok 0) ~form_id:"login"
-      ~user_id:1;
-    neg_csrf ~name:"CSRF: tampered signature"
-      (tamper csrf_tok (String.length csrf_tok - 1))
-      ~form_id:"login" ~user_id:1;
-    (* --- Wrong context --- *)
     neg_session_decode ~name:"session: wrong salt" session_salt_tok
       ~salt:"wrong";
-    neg_link_decode ~name:"link: wrong action" link_tok ~action:"password-reset";
-    neg_csrf ~name:"CSRF: wrong form_id" csrf_tok ~form_id:"settings" ~user_id:1;
-    neg_csrf ~name:"CSRF: wrong user_id" csrf_tok ~form_id:"login" ~user_id:999;
-    (* --- Session validate failures --- *)
     neg_session_validate ~name:"session: expired" session_10min_tok ~salt:""
       ~now:(fixed_now + 601) ~logout_at:0 ();
     neg_session_validate ~name:"session: future (beyond skew)"
@@ -418,13 +398,42 @@ let negative_vectors () =
       ~now:fixed_now ~logout_at:fixed_now ();
     neg_session_validate ~name:"session: admin logged out" session_admin_tok
       ~salt:"" ~now:fixed_now ~logout_at:0 ~admin_logout_at:fixed_now ();
-    (* --- Link validate failures --- *)
+  ]
+;;
+
+let link_negatives () =
+  [
+    neg_link_decode ~name:"session token in link decoder" session_tok
+      ~action:"login";
+    neg_link_decode ~name:"CSRF token in link decoder" csrf_tok ~action:"login";
+    neg_link_decode ~name:"link: tampered payload" (tamper link_tok 0)
+      ~action:"login";
+    neg_link_decode ~name:"link: tampered signature"
+      (tamper link_tok (String.length link_tok - 1))
+      ~action:"login";
+    neg_link_decode ~name:"link: wrong action" link_tok ~action:"password-reset";
     neg_link_validate ~name:"link: expired" link_10min_tok ~action:"login"
       ~now:(fixed_now + 601) ~last_nonce_at:0;
     neg_link_validate ~name:"link: future (beyond skew)" link_future_tok
       ~action:"login" ~now:fixed_now ~last_nonce_at:0;
     neg_link_validate ~name:"link: nonce consumed" link_tok ~action:"login"
       ~now:fixed_now ~last_nonce_at:fixed_now;
+  ]
+;;
+
+let csrf_negatives () =
+  [
+    neg_csrf ~name:"session token in CSRF validator" session_tok
+      ~form_id:"login" ~user_id:1;
+    neg_csrf ~name:"link token in CSRF validator" link_tok ~form_id:"login"
+      ~user_id:1;
+    neg_csrf ~name:"CSRF: tampered payload" (tamper csrf_tok 0) ~form_id:"login"
+      ~user_id:1;
+    neg_csrf ~name:"CSRF: tampered signature"
+      (tamper csrf_tok (String.length csrf_tok - 1))
+      ~form_id:"login" ~user_id:1;
+    neg_csrf ~name:"CSRF: wrong form_id" csrf_tok ~form_id:"settings" ~user_id:1;
+    neg_csrf ~name:"CSRF: wrong user_id" csrf_tok ~form_id:"login" ~user_id:999;
   ]
 ;;
 
@@ -444,10 +453,24 @@ let () =
               "today", `String (hex_of_string key_today);
               "yesterday", `String (hex_of_string key_yesterday);
             ] );
-        "session", `List (session_positives ());
-        "link", `List (link_positives ());
-        "csrf", `List (csrf_positives ());
-        "negative", `List (negative_vectors ());
+        ( "session",
+          `Assoc
+            [
+              "positive", `List (session_positives ());
+              "negative", `List (session_negatives ());
+            ] );
+        ( "link",
+          `Assoc
+            [
+              "positive", `List (link_positives ());
+              "negative", `List (link_negatives ());
+            ] );
+        ( "csrf",
+          `Assoc
+            [
+              "positive", `List (csrf_positives ());
+              "negative", `List (csrf_negatives ());
+            ] );
       ]
   in
   Yojson.Basic.pretty_to_channel stdout json;

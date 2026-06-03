@@ -1618,7 +1618,6 @@ let test_vectors_known_sections () =
       "session";
       "link";
       "csrf";
-      "negative";
     ]
   in
   match !vectors with
@@ -1632,31 +1631,29 @@ let test_vectors_known_sections () =
   | _ -> Alcotest.fail "vectors JSON is not an object"
 ;;
 
-let test_vectors_negative_known_forms () =
-  let known_forms = [ "session"; "link"; "csrf" ] in
-  json_list "negative" !vectors
-  |> List.iter (fun v ->
-    let name = json_string "name" v in
-    let form = json_string "form" v in
-    if not (List.mem form known_forms)
-    then Alcotest.failf "negative vector %S has unknown form: %s" name form
-)
-;;
-
 let test_vectors_sections_nonempty () =
   let v = !vectors in
+  let session = json_assoc "session" v in
+  let link = json_assoc "link" v in
+  let csrf = json_assoc "csrf" v in
   Alcotest.(check bool)
-    "session non-empty" true
-    (json_list "session" v |> List.length > 0);
+    "session positive non-empty" true
+    (json_list "positive" session |> List.length > 0);
   Alcotest.(check bool)
-    "link non-empty" true
-    (json_list "link" v |> List.length > 0);
+    "session negative non-empty" true
+    (json_list "negative" session |> List.length > 0);
   Alcotest.(check bool)
-    "csrf non-empty" true
-    (json_list "csrf" v |> List.length > 0);
+    "link positive non-empty" true
+    (json_list "positive" link |> List.length > 0);
   Alcotest.(check bool)
-    "negative non-empty" true
-    (json_list "negative" v |> List.length > 0)
+    "link negative non-empty" true
+    (json_list "negative" link |> List.length > 0);
+  Alcotest.(check bool)
+    "csrf positive non-empty" true
+    (json_list "positive" csrf |> List.length > 0);
+  Alcotest.(check bool)
+    "csrf negative non-empty" true
+    (json_list "negative" csrf |> List.length > 0)
 ;;
 
 (* --- Vector tests: CSRF --- *)
@@ -1785,13 +1782,12 @@ let vector_session_negative v =
 ;;
 
 let vector_session_tests () =
+  let section = json_assoc "session" !vectors in
   let positives =
-    json_list "session" !vectors |> List.map vector_session_positive
+    json_list "positive" section |> List.map vector_session_positive
   in
   let negatives =
-    json_list "negative" !vectors
-    |> List.filter (fun v -> json_string "form" v = "session")
-    |> List.map vector_session_negative
+    json_list "negative" section |> List.map vector_session_negative
   in
   positives @ negatives
 ;;
@@ -1870,21 +1866,23 @@ let vector_link_negative v =
 ;;
 
 let vector_link_tests () =
-  let positives = json_list "link" !vectors |> List.map vector_link_positive in
+  let section = json_assoc "link" !vectors in
+  let positives =
+    json_list "positive" section |> List.map vector_link_positive
+  in
   let negatives =
-    json_list "negative" !vectors
-    |> List.filter (fun v -> json_string "form" v = "link")
-    |> List.map vector_link_negative
+    json_list "negative" section |> List.map vector_link_negative
   in
   positives @ negatives
 ;;
 
 let vector_csrf_tests () =
-  let positives = json_list "csrf" !vectors |> List.map vector_csrf_positive in
+  let section = json_assoc "csrf" !vectors in
+  let positives =
+    json_list "positive" section |> List.map vector_csrf_positive
+  in
   let negatives =
-    json_list "negative" !vectors
-    |> List.filter (fun v -> json_string "form" v = "csrf")
-    |> List.map vector_csrf_negative
+    json_list "negative" section |> List.map vector_csrf_negative
   in
   positives @ negatives
 ;;
@@ -2129,8 +2127,6 @@ let () =
             Alcotest.test_case "keys" `Quick test_vectors_keys;
             Alcotest.test_case "known sections only" `Quick
               test_vectors_known_sections;
-            Alcotest.test_case "negative vectors have known forms" `Quick
-              test_vectors_negative_known_forms;
             Alcotest.test_case "sections non-empty" `Quick
               test_vectors_sections_nonempty;
           ] );
