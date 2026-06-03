@@ -1,20 +1,19 @@
-(* bwt_vectors.ml — Generate test-vectors.json for cross-implementation testing
+(** Generate test-vectors.json for cross-implementation testing
 
-   Usage:
-     dune exec ocaml/bwt_vectors.exe > test-vectors.json
+    Usage: dune exec ocaml/bwt_vectors.exe > test-vectors.json
 
-   This program generates deterministic test vectors from known inputs using
-   the OCaml BWT implementation as the reference.  Other implementations
-   consume the resulting JSON to verify encoding, decoding, and validation
-   compatibility.
+    This program generates deterministic test vectors from known inputs using
+    the OCaml BWT implementation as the reference. Other implementations consume
+    the resulting JSON to verify encoding, decoding, and validation
+    compatibility.
 
-   Each positive vector checks three things:
-   1. Encoding the given inputs produces expected_token exactly.
-   2. Decoding expected_token succeeds with the correct field values.
-   3. Validating the decoded token returns the expected result.
+    Each positive vector checks three things: 1. Encoding the given inputs
+    produces expected_token exactly. 2. Decoding expected_token succeeds with
+    the correct field values. 3. Validating the decoded token returns the
+    expected result.
 
-   Negative vectors assert failure at the indicated stage; error messages
-   are implementation-specific and not checked. *)
+    Negative vectors assert failure at the indicated stage; error messages are
+    implementation-specific and not checked. *)
 
 (* --- Standard hex encoding --- *)
 
@@ -66,7 +65,7 @@ let tamper s i =
 (* ===== Positive Session Vectors ===== *)
 
 let session_positive ~name ~key_name ~salt ~now ~user_id ?admin_id ~expires
-    ~validate_now ~logout_at ?admin_logout_at expected_result =
+  ~validate_now ~logout_at ?admin_logout_at expected_result =
   let key = key_of_name key_name in
   let tok =
     Bwt.Session.encode ~key ~now ~salt ~user_id ?admin_id expires |> unwrap
@@ -78,32 +77,32 @@ let session_positive ~name ~key_name ~salt ~now ~user_id ?admin_id ~expires
   in
   `Assoc
     [
-      ("name", `String name);
+      "name", `String name;
       ( "encode",
         `Assoc
           [
-            ("key", `String key_name);
-            ("salt", `String salt);
-            ("now", `Int now);
-            ("user_id", `Int user_id);
-            ("admin_id", int_or_null admin_id);
-            ("expires", `Int expires);
+            "key", `String key_name;
+            "salt", `String salt;
+            "now", `Int now;
+            "user_id", `Int user_id;
+            "admin_id", int_or_null admin_id;
+            "expires", `Int expires;
           ] );
-      ("expected_token", `String tok);
+      "expected_token", `String tok;
       ( "decode",
         `Assoc
           [
-            ("today", `String "today");
-            ("yesterday", string_or_null decode_yesterday);
-            ("salt", `String salt);
+            "today", `String "today";
+            "yesterday", string_or_null decode_yesterday;
+            "salt", `String salt;
           ] );
       ( "validate",
         `Assoc
           [
-            ("now", `Int validate_now);
-            ("logout_at", `Int logout_at);
-            ("admin_logout_at", int_or_null admin_logout_at);
-            ("expected", `String expected_result);
+            "now", `Int validate_now;
+            "logout_at", `Int logout_at;
+            "admin_logout_at", int_or_null admin_logout_at;
+            "expected", `String expected_result;
           ] );
     ]
 ;;
@@ -114,8 +113,8 @@ let session_positives () =
       ~salt:"" ~now:fixed_now ~user_id:1 ~expires:60 ~validate_now:fixed_now
       ~logout_at:0 "fresh";
     session_positive ~name:"with admin, empty salt" ~key_name:"today" ~salt:""
-      ~now:fixed_now ~user_id:1 ~admin_id:99 ~expires:60
-      ~validate_now:fixed_now ~logout_at:0 ~admin_logout_at:0 "fresh";
+      ~now:fixed_now ~user_id:1 ~admin_id:99 ~expires:60 ~validate_now:fixed_now
+      ~logout_at:0 ~admin_logout_at:0 "fresh";
     session_positive ~name:"non-empty salt (session)" ~key_name:"today"
       ~salt:"session" ~now:fixed_now ~user_id:1 ~expires:60
       ~validate_now:fixed_now ~logout_at:0 "fresh";
@@ -140,7 +139,7 @@ let session_positives () =
 (* ===== Positive Link Vectors ===== *)
 
 let link_positive ~name ~key_name ~action ~now ~user_id ~expires ~validate_now
-    ~last_nonce_at expected_result =
+  ~last_nonce_at expected_result =
   let key = key_of_name key_name in
   let tok = Bwt.Link.encode ~key ~now ~action ~user_id expires |> unwrap in
   let decode_yesterday =
@@ -150,30 +149,30 @@ let link_positive ~name ~key_name ~action ~now ~user_id ~expires ~validate_now
   in
   `Assoc
     [
-      ("name", `String name);
+      "name", `String name;
       ( "encode",
         `Assoc
           [
-            ("key", `String key_name);
-            ("action", `String action);
-            ("now", `Int now);
-            ("user_id", `Int user_id);
-            ("expires", `Int expires);
+            "key", `String key_name;
+            "action", `String action;
+            "now", `Int now;
+            "user_id", `Int user_id;
+            "expires", `Int expires;
           ] );
-      ("expected_token", `String tok);
+      "expected_token", `String tok;
       ( "decode",
         `Assoc
           [
-            ("today", `String "today");
-            ("yesterday", string_or_null decode_yesterday);
-            ("action", `String action);
+            "today", `String "today";
+            "yesterday", string_or_null decode_yesterday;
+            "action", `String action;
           ] );
       ( "validate",
         `Assoc
           [
-            ("now", `Int validate_now);
-            ("last_nonce_at", `Int last_nonce_at);
-            ("expected", `String expected_result);
+            "now", `Int validate_now;
+            "last_nonce_at", `Int last_nonce_at;
+            "expected", `String expected_result;
           ] );
     ]
 ;;
@@ -198,38 +197,38 @@ let link_positives () =
 (* ===== Positive CSRF Vectors ===== *)
 
 let csrf_positive ~name ~key_name ~rand ~user_id ~form_id ~validate_today
-    ?validate_yesterday ~validate_form_id ~validate_user_id expected_result =
+  ?validate_yesterday ~validate_form_id ~validate_user_id expected_result =
   let key = key_of_name key_name in
   let tok = Bwt.CSRF.encode ~key ~rand ~user_id form_id |> unwrap in
   `Assoc
     [
-      ("name", `String name);
+      "name", `String name;
       ( "encode",
         `Assoc
           [
-            ("key", `String key_name);
-            ("rand", `Int rand);
-            ("user_id", `Int user_id);
-            ("form_id", `String form_id);
+            "key", `String key_name;
+            "rand", `Int rand;
+            "user_id", `Int user_id;
+            "form_id", `String form_id;
           ] );
-      ("expected_token", `String tok);
+      "expected_token", `String tok;
       ( "validate",
         `Assoc
           [
-            ("today", `String validate_today);
-            ("yesterday", string_or_null validate_yesterday);
-            ("form_id", `String validate_form_id);
-            ("user_id", `Int validate_user_id);
-            ("expected", `String expected_result);
+            "today", `String validate_today;
+            "yesterday", string_or_null validate_yesterday;
+            "form_id", `String validate_form_id;
+            "user_id", `Int validate_user_id;
+            "expected", `String expected_result;
           ] );
     ]
 ;;
 
 let csrf_positives () =
   [
-    csrf_positive ~name:"rand=0 (minimum)" ~key_name:"today" ~rand:0
-      ~user_id:1 ~form_id:"login" ~validate_today:"today"
-      ~validate_form_id:"login" ~validate_user_id:1 "valid";
+    csrf_positive ~name:"rand=0 (minimum)" ~key_name:"today" ~rand:0 ~user_id:1
+      ~form_id:"login" ~validate_today:"today" ~validate_form_id:"login"
+      ~validate_user_id:1 "valid";
     csrf_positive ~name:"rand=4294967295 (max uint32)" ~key_name:"today"
       ~rand:4_294_967_295 ~user_id:1 ~form_id:"login" ~validate_today:"today"
       ~validate_form_id:"login" ~validate_user_id:1 "valid";
@@ -245,49 +244,43 @@ let csrf_positives () =
 
 (* ===== Negative Vectors ===== *)
 
-(* Helpers to reduce repetition in negative vector construction.
-   "should_fail_at" is "decode" or "validate".
-   For "decode": the test calls decode and expects an error.
-   For "validate": the test first decodes (expecting success) then validates
-   with the given parameters and expects an error. *)
+(** Helpers to reduce repetition in negative vector construction.
+    "should_fail_at" is "decode" or "validate". For "decode": the test calls
+    decode and expects an error. For "validate": the test first decodes
+    (expecting success) then validates with the given parameters and expects an
+    error. *)
 
 let neg_session_decode ~name token ~salt =
   `Assoc
     [
-      ("name", `String name);
-      ("form", `String "session");
-      ("token", `String token);
-      ("should_fail_at", `String "decode");
+      "name", `String name;
+      "form", `String "session";
+      "token", `String token;
+      "should_fail_at", `String "decode";
       ( "decode",
         `Assoc
-          [
-            ("today", `String "today");
-            ("yesterday", `Null);
-            ("salt", `String salt);
-          ] );
+          [ "today", `String "today"; "yesterday", `Null; "salt", `String salt ]
+      );
     ]
 ;;
 
 let neg_session_validate ~name token ~salt ~now ~logout_at ?admin_logout_at () =
   `Assoc
     [
-      ("name", `String name);
-      ("form", `String "session");
-      ("token", `String token);
-      ("should_fail_at", `String "validate");
+      "name", `String name;
+      "form", `String "session";
+      "token", `String token;
+      "should_fail_at", `String "validate";
       ( "decode",
         `Assoc
-          [
-            ("today", `String "today");
-            ("yesterday", `Null);
-            ("salt", `String salt);
-          ] );
+          [ "today", `String "today"; "yesterday", `Null; "salt", `String salt ]
+      );
       ( "validate",
         `Assoc
           [
-            ("now", `Int now);
-            ("logout_at", `Int logout_at);
-            ("admin_logout_at", int_or_null admin_logout_at);
+            "now", `Int now;
+            "logout_at", `Int logout_at;
+            "admin_logout_at", int_or_null admin_logout_at;
           ] );
     ]
 ;;
@@ -295,16 +288,16 @@ let neg_session_validate ~name token ~salt ~now ~logout_at ?admin_logout_at () =
 let neg_link_decode ~name token ~action =
   `Assoc
     [
-      ("name", `String name);
-      ("form", `String "link");
-      ("token", `String token);
-      ("should_fail_at", `String "decode");
+      "name", `String name;
+      "form", `String "link";
+      "token", `String token;
+      "should_fail_at", `String "decode";
       ( "decode",
         `Assoc
           [
-            ("today", `String "today");
-            ("yesterday", `Null);
-            ("action", `String action);
+            "today", `String "today";
+            "yesterday", `Null;
+            "action", `String action;
           ] );
     ]
 ;;
@@ -312,40 +305,36 @@ let neg_link_decode ~name token ~action =
 let neg_link_validate ~name token ~action ~now ~last_nonce_at =
   `Assoc
     [
-      ("name", `String name);
-      ("form", `String "link");
-      ("token", `String token);
-      ("should_fail_at", `String "validate");
+      "name", `String name;
+      "form", `String "link";
+      "token", `String token;
+      "should_fail_at", `String "validate";
       ( "decode",
         `Assoc
           [
-            ("today", `String "today");
-            ("yesterday", `Null);
-            ("action", `String action);
+            "today", `String "today";
+            "yesterday", `Null;
+            "action", `String action;
           ] );
       ( "validate",
-        `Assoc
-          [
-            ("now", `Int now);
-            ("last_nonce_at", `Int last_nonce_at);
-          ] );
+        `Assoc [ "now", `Int now; "last_nonce_at", `Int last_nonce_at ] );
     ]
 ;;
 
 let neg_csrf ~name token ~form_id ~user_id =
   `Assoc
     [
-      ("name", `String name);
-      ("form", `String "csrf");
-      ("token", `String token);
-      ("should_fail_at", `String "validate");
+      "name", `String name;
+      "form", `String "csrf";
+      "token", `String token;
+      "should_fail_at", `String "validate";
       ( "validate",
         `Assoc
           [
-            ("today", `String "today");
-            ("yesterday", `Null);
-            ("form_id", `String form_id);
-            ("user_id", `Int user_id);
+            "today", `String "today";
+            "yesterday", `Null;
+            "form_id", `String form_id;
+            "user_id", `Int user_id;
           ] );
     ]
 ;;
@@ -409,20 +398,17 @@ let negative_vectors () =
     neg_link_decode ~name:"link: tampered signature"
       (tamper link_tok (String.length link_tok - 1))
       ~action:"login";
-    neg_csrf ~name:"CSRF: tampered payload" (tamper csrf_tok 0)
-      ~form_id:"login" ~user_id:1;
+    neg_csrf ~name:"CSRF: tampered payload" (tamper csrf_tok 0) ~form_id:"login"
+      ~user_id:1;
     neg_csrf ~name:"CSRF: tampered signature"
       (tamper csrf_tok (String.length csrf_tok - 1))
       ~form_id:"login" ~user_id:1;
     (* --- Wrong context --- *)
     neg_session_decode ~name:"session: wrong salt" session_salt_tok
       ~salt:"wrong";
-    neg_link_decode ~name:"link: wrong action" link_tok
-      ~action:"password-reset";
-    neg_csrf ~name:"CSRF: wrong form_id" csrf_tok ~form_id:"settings"
-      ~user_id:1;
-    neg_csrf ~name:"CSRF: wrong user_id" csrf_tok ~form_id:"login"
-      ~user_id:999;
+    neg_link_decode ~name:"link: wrong action" link_tok ~action:"password-reset";
+    neg_csrf ~name:"CSRF: wrong form_id" csrf_tok ~form_id:"settings" ~user_id:1;
+    neg_csrf ~name:"CSRF: wrong user_id" csrf_tok ~form_id:"login" ~user_id:999;
     (* --- Session validate failures --- *)
     neg_session_validate ~name:"session: expired" session_10min_tok ~salt:""
       ~now:(fixed_now + 601) ~logout_at:0 ();
@@ -448,20 +434,20 @@ let () =
   let json =
     `Assoc
       [
-        ("spec_version", `String "1.0rc5");
-        ("generated_by", `String "ocaml/bwt_vectors.ml");
-        ("bwt_epoch", `Int bwt_epoch);
-        ("fixed_now", `Int fixed_now);
+        "spec_version", `String "1.0rc5";
+        "generated_by", `String "ocaml/bwt_vectors.ml";
+        "bwt_epoch", `Int bwt_epoch;
+        "fixed_now", `Int fixed_now;
         ( "keys",
           `Assoc
             [
-              ("today", `String (hex_of_string key_today));
-              ("yesterday", `String (hex_of_string key_yesterday));
+              "today", `String (hex_of_string key_today);
+              "yesterday", `String (hex_of_string key_yesterday);
             ] );
-        ("session", `List (session_positives ()));
-        ("link", `List (link_positives ()));
-        ("csrf", `List (csrf_positives ()));
-        ("negative", `List (negative_vectors ()));
+        "session", `List (session_positives ());
+        "link", `List (link_positives ());
+        "csrf", `List (csrf_positives ());
+        "negative", `List (negative_vectors ());
       ]
   in
   Yojson.Basic.pretty_to_channel stdout json;
