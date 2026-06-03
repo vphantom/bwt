@@ -15,7 +15,7 @@
 (executable
  (name bwt_vectors)
  (modules bwt_vectors)
- (libraries bwt yojson))
+ (libraries bwt digestif yojson))
 
 (env
  (default

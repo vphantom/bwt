@@ -16,6 +16,8 @@ Development dependencies add:
 * `bisect-ppx`
 * `qcheck` and `qcheck-alcotest`
 
+The implementation gets 90.68% test coverage from the test vectors and 92.28% from distinct OCaml-specific tests, for a combined total of 99.36% test coverage.  That is, every line except the single-line test that we're on a 64-bit platform.
+
 ## Installation
 
 This package is not published on OPAM.  Two common approaches are:
@@ -59,6 +61,8 @@ let today = Mirage_crypto_rng.generate 64 in
 ```
 
 ## Known Limitations
+
+This OCaml implementation is considered to be our "reference implementation", except for these specific limitations.
 
 * User and admin fields are represented with the `int` type, and thus numbers 2<sup>62</sup> and above are not supported and yield `Error Int_overflow`.
 

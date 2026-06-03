@@ -8,6 +8,9 @@ clean:
 	@dune clean
 	@rm -fr _coverage
 
+test-vectors.json:
+	@dune exec ./bwt_vectors.exe >test-vectors.json
+
 test:
 	@rm -rf _coverage
 	@if [ ! -f test-vectors.json ]; then ln -s ../test-vectors.json .; fi
@@ -23,7 +26,9 @@ test:
 
 test-direct:
 	@rm -rf _coverage
+	@if [ ! -f test-vectors.json ]; then ln -s ../test-vectors.json .; fi
 	@BWT_TESTS=direct dune runtest --profile=coverage --instrument-with bisect_ppx --force --no-buffer
+	@rm ./test-vectors.json
 	@bisect-ppx-report html
 	@bisect-ppx-report summary
 	@bisect-ppx-report coveralls _coverage/coverage.json

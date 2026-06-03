@@ -160,6 +160,63 @@
           "admin_logout_at": null,
           "expected": "fresh"
         }
+      },
+      {
+        "name": "expiry boundary at 599s (valid stale)",
+        "encode": {
+          "key": "today",
+          "salt": "",
+          "now": 1760750750,
+          "user_id": 1,
+          "admin_id": null,
+          "expires": 10
+        },
+        "expected_token": "RQRNQG5S5H9LHMRPGLGJNTRSRJPVHPRZRGKLPTJPQNPLHJGVNHPNKGRJXZRHKZKQXQN",
+        "decode": { "today": "today", "yesterday": null, "salt": "" },
+        "validate": {
+          "now": 1760751349,
+          "logout_at": 0,
+          "admin_logout_at": null,
+          "expected": "stale"
+        }
+      },
+      {
+        "name": "freshness boundary at 119s (fresh)",
+        "encode": {
+          "key": "today",
+          "salt": "",
+          "now": 1760750750,
+          "user_id": 1,
+          "admin_id": null,
+          "expires": 10
+        },
+        "expected_token": "RQRNQG5S5H9LHMRPGLGJNTRSRJPVHPRZRGKLPTJPQNPLHJGVNHPNKGRJXZRHKZKQXQN",
+        "decode": { "today": "today", "yesterday": null, "salt": "" },
+        "validate": {
+          "now": 1760750869,
+          "logout_at": 0,
+          "admin_logout_at": null,
+          "expected": "fresh"
+        }
+      },
+      {
+        "name": "future within 5s skew (fresh)",
+        "encode": {
+          "key": "today",
+          "salt": "",
+          "now": 1760750755,
+          "user_id": 1,
+          "admin_id": null,
+          "expires": 60
+        },
+        "expected_token": "RQRNQM5KV5H9WWWTLPWTTNXWHVHQTQPLVQVSSHVPLLXRLJHGNPXQXQSWVRJRNPQTWTGQ",
+        "decode": { "today": "today", "yesterday": null, "salt": "" },
+        "validate": {
+          "now": 1760750750,
+          "logout_at": 0,
+          "admin_logout_at": null,
+          "expected": "fresh"
+        }
       }
     ],
     "negative": [
@@ -188,10 +245,70 @@
         "decode": { "today": "today", "yesterday": null, "salt": "" }
       },
       {
+        "name": "session: invalid char in signature",
+        "token": "RQRNQG5KV5H9GGXJJZZRSQVXPSHXHNZJMMLNXJXRWHKPRZHJQVGLLSNGGLKMRZSSHQQa",
+        "should_fail_at": "decode",
+        "decode": { "today": "today", "yesterday": null, "salt": "" }
+      },
+      {
+        "name": "session: no separator",
+        "token": "HHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHH",
+        "should_fail_at": "decode",
+        "decode": { "today": "today", "yesterday": null, "salt": "" }
+      },
+      {
+        "name": "session: multiple separators",
+        "token": "H5H5H9H5H5H9HHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHH",
+        "should_fail_at": "decode",
+        "decode": { "today": "today", "yesterday": null, "salt": "" }
+      },
+      {
+        "name": "session: forged empty field",
+        "token": "H55H5H9LTTGSVLHZRMLSZLZGHSGQLZNHHWHWLLGZTLNSVXMTHRWLNKJQWPXMMZV",
+        "should_fail_at": "decode",
+        "decode": { "today": "today", "yesterday": null, "salt": "" }
+      },
+      {
+        "name": "session: forged leading zero",
+        "token": "GH5H5H9MMNNVHQXKQPKGLZVPZSZJLWWMWPGRMMTWPRMWGHMKWLRVPRZXMQNQMJT",
+        "should_fail_at": "decode",
+        "decode": { "today": "today", "yesterday": null, "salt": "" }
+      },
+      {
+        "name": "session: forged field too long",
+        "token": "HHGGGGGGGGGGGGGGG5H5H9JVKQWJHZNPKMJQPVHGMNJTMGJMJKZVHHPLJGNKLSRHKGVLWQQLWJPWTS",
+        "should_fail_at": "decode",
+        "decode": { "today": "today", "yesterday": null, "salt": "" }
+      },
+      {
+        "name": "session: forged invalid char in payload",
+        "token": "A5H5H9LHQTKMTKTVWTPRTXNNVPWRRJMJMJRQXWLPRPRWJPPMKXPLGWQLSLWQPH",
+        "should_fail_at": "decode",
+        "decode": { "today": "today", "yesterday": null, "salt": "" }
+      },
+      {
+        "name": "session: forged too few fields",
+        "token": "H5H9PHPQJSPZGXNMKPKKLQJJZVXSWSZRKMLHMXTRPHGVPLTKRWLGMMNLNMVV",
+        "should_fail_at": "decode",
+        "decode": { "today": "today", "yesterday": null, "salt": "" }
+      },
+      {
+        "name": "session: forged too many fields",
+        "token": "H5H5H5H5H9GTPSPPVVZNJLWLQNTWSTRJTMSPRNHVVNHLPLMVXPGNTJWRTQZGWSRPKZ",
+        "should_fail_at": "decode",
+        "decode": { "today": "today", "yesterday": null, "salt": "" }
+      },
+      {
         "name": "session: wrong salt",
         "token": "RQRNQG5KV5H9JQVQMJMTZMPRKRXZPXJHHLPTPPTRHPKXLRGKLQRSXMNSJRKWZMXKJLKP",
         "should_fail_at": "decode",
         "decode": { "today": "today", "yesterday": null, "salt": "wrong" }
+      },
+      {
+        "name": "session: only today rejects yesterday key",
+        "token": "RQRNQG5KV5H9WLLRPPGLPLWVHGZPXWKSTSLQMVTPRVKQQHVJRKNXMXXMSWRLGTWSWPGQ",
+        "should_fail_at": "decode",
+        "decode": { "today": "today", "yesterday": null, "salt": "" }
       },
       {
         "name": "session: expired",
@@ -205,8 +322,30 @@
         }
       },
       {
+        "name": "session: expiry boundary at 600s",
+        "token": "RQRNQG5S5H9LHMRPGLGJNTRSRJPVHPRZRGKLPTJPQNPLHJGVNHPNKGRJXZRHKZKQXQN",
+        "should_fail_at": "validate",
+        "decode": { "today": "today", "yesterday": null, "salt": "" },
+        "validate": {
+          "now": 1760751350,
+          "logout_at": 0,
+          "admin_logout_at": null
+        }
+      },
+      {
         "name": "session: future (beyond skew)",
         "token": "RQRNQS5KV5H9SMPZZWGZJQSPXSTZWVTZSZLPWJLXWJJLSJWQTHVRXJTMJRLNNVKZGXTP",
+        "should_fail_at": "validate",
+        "decode": { "today": "today", "yesterday": null, "salt": "" },
+        "validate": {
+          "now": 1760750750,
+          "logout_at": 0,
+          "admin_logout_at": null
+        }
+      },
+      {
+        "name": "session: future at 6s (just beyond skew)",
+        "token": "RQRNQN5KV5H9XVNRLJZVLJRSWGZKRLJMMQZSXWNSWGVQKKGKGRWXSRXRRZKZNVMZWRTS",
         "should_fail_at": "validate",
         "decode": { "today": "today", "yesterday": null, "salt": "" },
         "validate": {
@@ -235,6 +374,17 @@
           "now": 1760750750,
           "logout_at": 0,
           "admin_logout_at": 1760750750
+        }
+      },
+      {
+        "name": "session: missing admin_logout_at",
+        "token": "RQRNQG5KV5H5NK9QVRSWSNHKQWQGLRSWGSGVQKLNVJWQZPWPPTRVRGWWRMWTVQHRKMRZJKP",
+        "should_fail_at": "validate",
+        "decode": { "today": "today", "yesterday": null, "salt": "" },
+        "validate": {
+          "now": 1760750750,
+          "logout_at": 0,
+          "admin_logout_at": null
         }
       }
     ]
@@ -316,6 +466,57 @@
           "last_nonce_at": 0,
           "expected": "valid"
         }
+      },
+      {
+        "name": "expiry boundary at 599s (valid)",
+        "encode": {
+          "key": "today",
+          "action": "login",
+          "now": 1760750750,
+          "user_id": 1,
+          "expires": 10
+        },
+        "expected_token": "RQRNQG5S5H9PKPTRJQGZLQHSKPQMVPWHJMMTHHLNGHR",
+        "decode": { "today": "today", "yesterday": null, "action": "login" },
+        "validate": {
+          "now": 1760751349,
+          "last_nonce_at": 0,
+          "expected": "valid"
+        }
+      },
+      {
+        "name": "future within 5s skew (valid)",
+        "encode": {
+          "key": "today",
+          "action": "login",
+          "now": 1760750755,
+          "user_id": 1,
+          "expires": 60
+        },
+        "expected_token": "RQRNQM5KV5H9RTQXPSQMLTVKXRJHXKTTPTLWMNXKXKNL",
+        "decode": { "today": "today", "yesterday": null, "action": "login" },
+        "validate": {
+          "now": 1760750750,
+          "last_nonce_at": 0,
+          "expected": "valid"
+        }
+      },
+      {
+        "name": "nonce just before issued_at (valid)",
+        "encode": {
+          "key": "today",
+          "action": "login",
+          "now": 1760750750,
+          "user_id": 1,
+          "expires": 60
+        },
+        "expected_token": "RQRNQG5KV5H9ZLVTJRJMGQHJQHSNZRMJLTPHZQGNPSZX",
+        "decode": { "today": "today", "yesterday": null, "action": "login" },
+        "validate": {
+          "now": 1760750750,
+          "last_nonce_at": 1760750749,
+          "expected": "valid"
+        }
       }
     ],
     "negative": [
@@ -344,6 +545,48 @@
         "decode": { "today": "today", "yesterday": null, "action": "login" }
       },
       {
+        "name": "link: invalid char in signature",
+        "token": "RQRNQG5KV5H9ZLVTJRJMGQHJQHSNZRMJLTPHZQGNPSZa",
+        "should_fail_at": "decode",
+        "decode": { "today": "today", "yesterday": null, "action": "login" }
+      },
+      {
+        "name": "link: forged empty field",
+        "token": "H55H9JWTPPTKRLPGPRMSLWQWJQLMZKPPKKNVL",
+        "should_fail_at": "decode",
+        "decode": { "today": "today", "yesterday": null, "action": "login" }
+      },
+      {
+        "name": "link: forged leading zero",
+        "token": "GH5H5H9LKRTZJRTSKKGRSTZNVVJVLLVKVMSZQVQ",
+        "should_fail_at": "decode",
+        "decode": { "today": "today", "yesterday": null, "action": "login" }
+      },
+      {
+        "name": "link: forged field too long",
+        "token": "H5H5HHGGGGGGGGGGGGGGG9MMMGTNNVMZRKSGMLNSPHLSPVVTHLNTRT",
+        "should_fail_at": "decode",
+        "decode": { "today": "today", "yesterday": null, "action": "login" }
+      },
+      {
+        "name": "link: forged invalid char in payload",
+        "token": "A5H5H9SJPTJRZRQTJQWQWGPMQWRWJNZWSGHJLR",
+        "should_fail_at": "decode",
+        "decode": { "today": "today", "yesterday": null, "action": "login" }
+      },
+      {
+        "name": "link: forged too few fields",
+        "token": "H5H9MRRNVVSMRZLTKJVRMPKRVPLSHWXXZLXL",
+        "should_fail_at": "decode",
+        "decode": { "today": "today", "yesterday": null, "action": "login" }
+      },
+      {
+        "name": "link: forged too many fields",
+        "token": "H5H5H5H9QQNVGVMSGNWXPJNLRVXTLMNGNLZRSXLR",
+        "should_fail_at": "decode",
+        "decode": { "today": "today", "yesterday": null, "action": "login" }
+      },
+      {
         "name": "link: wrong action",
         "token": "RQRNQG5KV5H9ZLVTJRJMGQHJQHSNZRMJLTPHZQGNPSZX",
         "should_fail_at": "decode",
@@ -354,6 +597,12 @@
         }
       },
       {
+        "name": "link: only today rejects yesterday key",
+        "token": "RQRNQG5KV5H9XQRNQMRJGWPRVQGKNTGKPZVKTLPMSMZM",
+        "should_fail_at": "decode",
+        "decode": { "today": "today", "yesterday": null, "action": "login" }
+      },
+      {
         "name": "link: expired",
         "token": "RQRNQG5S5H9PKPTRJQGZLQHSKPQMVPWHJMMTHHLNGHR",
         "should_fail_at": "validate",
@@ -361,8 +610,22 @@
         "validate": { "now": 1760751351, "last_nonce_at": 0 }
       },
       {
+        "name": "link: expiry boundary at 600s",
+        "token": "RQRNQG5S5H9PKPTRJQGZLQHSKPQMVPWHJMMTHHLNGHR",
+        "should_fail_at": "validate",
+        "decode": { "today": "today", "yesterday": null, "action": "login" },
+        "validate": { "now": 1760751350, "last_nonce_at": 0 }
+      },
+      {
         "name": "link: future (beyond skew)",
         "token": "RQRNQS5KV5H9PGHWZNWKQKPWVNTNPHHQLZGXXKVMNVKM",
+        "should_fail_at": "validate",
+        "decode": { "today": "today", "yesterday": null, "action": "login" },
+        "validate": { "now": 1760750750, "last_nonce_at": 0 }
+      },
+      {
+        "name": "link: future at 6s (just beyond skew)",
+        "token": "RQRNQN5KV5H9ZMRJRVXNKZWNVNNSLMRNSRJPKZTTQWKM",
         "should_fail_at": "validate",
         "decode": { "today": "today", "yesterday": null, "action": "login" },
         "validate": { "now": 1760750750, "last_nonce_at": 0 }
@@ -493,6 +756,17 @@
         }
       },
       {
+        "name": "CSRF: invalid char in signature",
+        "token": "JS9XKLRWSHGQVWJXLLPKMJKPXKa",
+        "should_fail_at": "validate",
+        "validate": {
+          "today": "today",
+          "yesterday": null,
+          "form_id": "login",
+          "user_id": 1
+        }
+      },
+      {
         "name": "CSRF: wrong form_id",
         "token": "JS9XKLRWSHGQVWJXLLPKMJKPXKQ",
         "should_fail_at": "validate",
@@ -512,6 +786,17 @@
           "yesterday": null,
           "form_id": "login",
           "user_id": 999
+        }
+      },
+      {
+        "name": "CSRF: only today rejects yesterday key",
+        "token": "JS9QKVJSJZXHQJKSMRSWLJLLKPZ",
+        "should_fail_at": "validate",
+        "validate": {
+          "today": "today",
+          "yesterday": null,
+          "form_id": "login",
+          "user_id": 1
         }
       }
     ]

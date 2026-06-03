@@ -55,11 +55,40 @@ let key_of_name = function
   | s -> failwith ("unknown key name: " ^ s)
 ;;
 
+(** Replace the last character with a non-safe-hex character. *)
+let corrupt_sig s =
+  let b = Bytes.of_string s in
+  Bytes.set b (String.length s - 1) 'a';
+  Bytes.to_string b
+;;
+
 (** Flip one safe-hex character at position [i] in [s]. *)
 let tamper s i =
   let b = Bytes.of_string s in
   Bytes.set b i (if Bytes.get b i = 'H' then 'J' else 'H');
   Bytes.to_string b
+;;
+
+(** Forge a Session token: sign [payload] with [key_today] and [salt] using
+    Session's separator [:] and full 56-char safe-hex signature. *)
+let forge_session ~salt payload =
+  let hmac_input = salt ^ ":" ^ payload in
+  let raw_sig =
+    Digestif.SHA224.(hmac_string ~key:key_today hmac_input |> to_raw_string)
+  in
+  let sig_hex = Bwt.safehex_of_string raw_sig in
+  payload ^ "9" ^ String.sub sig_hex 0 56
+;;
+
+(** Forge a Link token: sign [payload] with [key_today] and [action] using
+    Link's separator [=] and truncated 32-char safe-hex signature. *)
+let forge_link ~action payload =
+  let hmac_input = action ^ "=" ^ payload in
+  let raw_sig =
+    Digestif.SHA224.(hmac_string ~key:key_today hmac_input |> to_raw_string)
+  in
+  let sig_hex = Bwt.safehex_of_string raw_sig in
+  payload ^ "9" ^ String.sub sig_hex 0 32
 ;;
 
 (* ===== Positive Session Vectors ===== *)
@@ -133,6 +162,15 @@ let session_positives () =
     session_positive ~name:"large user_id" ~key_name:"today" ~salt:""
       ~now:fixed_now ~user_id:1_000_000 ~expires:60 ~validate_now:fixed_now
       ~logout_at:0 "fresh";
+    session_positive ~name:"expiry boundary at 599s (valid stale)"
+      ~key_name:"today" ~salt:"" ~now:fixed_now ~user_id:1 ~expires:10
+      ~validate_now:(fixed_now + 599) ~logout_at:0 "stale";
+    session_positive ~name:"freshness boundary at 119s (fresh)"
+      ~key_name:"today" ~salt:"" ~now:fixed_now ~user_id:1 ~expires:10
+      ~validate_now:(fixed_now + 119) ~logout_at:0 "fresh";
+    session_positive ~name:"future within 5s skew (fresh)" ~key_name:"today"
+      ~salt:"" ~now:(fixed_now + 5) ~user_id:1 ~expires:60
+      ~validate_now:fixed_now ~logout_at:0 "fresh";
   ]
 ;;
 
@@ -191,6 +229,15 @@ let link_positives () =
     link_positive ~name:"yesterday key (decode with both)" ~key_name:"yesterday"
       ~action:"login" ~now:fixed_now ~user_id:1 ~expires:60
       ~validate_now:fixed_now ~last_nonce_at:0 "valid";
+    link_positive ~name:"expiry boundary at 599s (valid)" ~key_name:"today"
+      ~action:"login" ~now:fixed_now ~user_id:1 ~expires:10
+      ~validate_now:(fixed_now + 599) ~last_nonce_at:0 "valid";
+    link_positive ~name:"future within 5s skew (valid)" ~key_name:"today"
+      ~action:"login" ~now:(fixed_now + 5) ~user_id:1 ~expires:60
+      ~validate_now:fixed_now ~last_nonce_at:0 "valid";
+    link_positive ~name:"nonce just before issued_at (valid)" ~key_name:"today"
+      ~action:"login" ~now:fixed_now ~user_id:1 ~expires:60
+      ~validate_now:fixed_now ~last_nonce_at:(fixed_now - 1) "valid";
   ]
 ;;
 
@@ -379,6 +426,30 @@ let csrf_tok =
   Bwt.CSRF.encode ~key:key_today ~rand:42 ~user_id:1 "login" |> unwrap
 ;;
 
+let session_future6_tok =
+  Bwt.Session.encode ~key:key_today ~now:(fixed_now + 6) ~user_id:1 60 |> unwrap
+;;
+
+let session_yesterday_tok =
+  Bwt.Session.encode ~key:key_yesterday ~now:fixed_now ~user_id:1 60 |> unwrap
+;;
+
+let link_future6_tok =
+  Bwt.Link.encode ~key:key_today ~now:(fixed_now + 6) ~action:"login" ~user_id:1
+    60
+  |> unwrap
+;;
+
+let link_yesterday_tok =
+  Bwt.Link.encode ~key:key_yesterday ~now:fixed_now ~action:"login" ~user_id:1
+    60
+  |> unwrap
+;;
+
+let csrf_yesterday_tok =
+  Bwt.CSRF.encode ~key:key_yesterday ~rand:42 ~user_id:1 "login" |> unwrap
+;;
+
 let session_negatives () =
   [
     neg_session_decode ~name:"link token in session decoder" link_tok ~salt:"";
@@ -388,16 +459,49 @@ let session_negatives () =
     neg_session_decode ~name:"session: tampered signature"
       (tamper session_tok (String.length session_tok - 1))
       ~salt:"";
+    neg_session_decode ~name:"session: invalid char in signature"
+      (corrupt_sig session_tok) ~salt:"";
+    neg_session_decode ~name:"session: no separator" (String.make 62 'H')
+      ~salt:"";
+    neg_session_decode ~name:"session: multiple separators"
+      ("H5H5H9H5H5H9" ^ String.make 56 'H')
+      ~salt:"";
+    neg_session_decode ~name:"session: forged empty field"
+      (forge_session ~salt:"" "H55H5H")
+      ~salt:"";
+    neg_session_decode ~name:"session: forged leading zero"
+      (forge_session ~salt:"" "GH5H5H")
+      ~salt:"";
+    neg_session_decode ~name:"session: forged field too long"
+      (forge_session ~salt:"" "HHGGGGGGGGGGGGGGG5H5H")
+      ~salt:"";
+    neg_session_decode ~name:"session: forged invalid char in payload"
+      (forge_session ~salt:"" "A5H5H")
+      ~salt:"";
+    neg_session_decode ~name:"session: forged too few fields"
+      (forge_session ~salt:"" "H5H")
+      ~salt:"";
+    neg_session_decode ~name:"session: forged too many fields"
+      (forge_session ~salt:"" "H5H5H5H5H")
+      ~salt:"";
     neg_session_decode ~name:"session: wrong salt" session_salt_tok
       ~salt:"wrong";
+    neg_session_decode ~name:"session: only today rejects yesterday key"
+      session_yesterday_tok ~salt:"";
     neg_session_validate ~name:"session: expired" session_10min_tok ~salt:""
       ~now:(fixed_now + 601) ~logout_at:0 ();
+    neg_session_validate ~name:"session: expiry boundary at 600s"
+      session_10min_tok ~salt:"" ~now:(fixed_now + 600) ~logout_at:0 ();
     neg_session_validate ~name:"session: future (beyond skew)"
       session_future_tok ~salt:"" ~now:fixed_now ~logout_at:0 ();
+    neg_session_validate ~name:"session: future at 6s (just beyond skew)"
+      session_future6_tok ~salt:"" ~now:fixed_now ~logout_at:0 ();
     neg_session_validate ~name:"session: logged out" session_tok ~salt:""
       ~now:fixed_now ~logout_at:fixed_now ();
     neg_session_validate ~name:"session: admin logged out" session_admin_tok
       ~salt:"" ~now:fixed_now ~logout_at:0 ~admin_logout_at:fixed_now ();
+    neg_session_validate ~name:"session: missing admin_logout_at"
+      session_admin_tok ~salt:"" ~now:fixed_now ~logout_at:0 ();
   ]
 ;;
 
@@ -411,11 +515,37 @@ let link_negatives () =
     neg_link_decode ~name:"link: tampered signature"
       (tamper link_tok (String.length link_tok - 1))
       ~action:"login";
+    neg_link_decode ~name:"link: invalid char in signature"
+      (corrupt_sig link_tok) ~action:"login";
+    neg_link_decode ~name:"link: forged empty field"
+      (forge_link ~action:"login" "H55H")
+      ~action:"login";
+    neg_link_decode ~name:"link: forged leading zero"
+      (forge_link ~action:"login" "GH5H5H")
+      ~action:"login";
+    neg_link_decode ~name:"link: forged field too long"
+      (forge_link ~action:"login" "H5H5HHGGGGGGGGGGGGGGG")
+      ~action:"login";
+    neg_link_decode ~name:"link: forged invalid char in payload"
+      (forge_link ~action:"login" "A5H5H")
+      ~action:"login";
+    neg_link_decode ~name:"link: forged too few fields"
+      (forge_link ~action:"login" "H5H")
+      ~action:"login";
+    neg_link_decode ~name:"link: forged too many fields"
+      (forge_link ~action:"login" "H5H5H5H")
+      ~action:"login";
     neg_link_decode ~name:"link: wrong action" link_tok ~action:"password-reset";
+    neg_link_decode ~name:"link: only today rejects yesterday key"
+      link_yesterday_tok ~action:"login";
     neg_link_validate ~name:"link: expired" link_10min_tok ~action:"login"
       ~now:(fixed_now + 601) ~last_nonce_at:0;
+    neg_link_validate ~name:"link: expiry boundary at 600s" link_10min_tok
+      ~action:"login" ~now:(fixed_now + 600) ~last_nonce_at:0;
     neg_link_validate ~name:"link: future (beyond skew)" link_future_tok
       ~action:"login" ~now:fixed_now ~last_nonce_at:0;
+    neg_link_validate ~name:"link: future at 6s (just beyond skew)"
+      link_future6_tok ~action:"login" ~now:fixed_now ~last_nonce_at:0;
     neg_link_validate ~name:"link: nonce consumed" link_tok ~action:"login"
       ~now:fixed_now ~last_nonce_at:fixed_now;
   ]
@@ -432,8 +562,12 @@ let csrf_negatives () =
     neg_csrf ~name:"CSRF: tampered signature"
       (tamper csrf_tok (String.length csrf_tok - 1))
       ~form_id:"login" ~user_id:1;
+    neg_csrf ~name:"CSRF: invalid char in signature" (corrupt_sig csrf_tok)
+      ~form_id:"login" ~user_id:1;
     neg_csrf ~name:"CSRF: wrong form_id" csrf_tok ~form_id:"settings" ~user_id:1;
     neg_csrf ~name:"CSRF: wrong user_id" csrf_tok ~form_id:"login" ~user_id:999;
+    neg_csrf ~name:"CSRF: only today rejects yesterday key" csrf_yesterday_tok
+      ~form_id:"login" ~user_id:1;
   ]
 ;;
 
