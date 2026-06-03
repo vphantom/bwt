@@ -6,6 +6,13 @@ let () =
 let ( let@ ) = ( @@ )
 let ( let* ) = Result.bind
 let ( ||| ) o default = Option.value ~default o
+
+let ( ||~ ) o f =
+  match o with
+  | None -> f ()
+  | Some x -> x
+;;
+
 let die_arg fmt = Printf.ksprintf invalid_arg ("Bwt." ^^ fmt)
 let error fmt = Printf.ksprintf (fun s -> Error ("Bwt." ^ s)) fmt
 (* let die fmt = Printf.ksprintf failwith ("Bwt: " ^^ fmt) *)
@@ -40,7 +47,7 @@ let nibble_of_char = function
 
 let safehex_alphabet = "GHJKLMNPQRSTVWXZ"
 
-let write_safehex_of_int buf n =
+let writehex_int buf n =
   if n < 0 then invalid_arg "Bwt.safehex_of_int: negative input";
   if n = 0
   then Buffer.add_char buf 'G'
@@ -61,7 +68,7 @@ let write_safehex_of_int buf n =
 
 let safehex_of_int n =
   let buf = Buffer.create 16 in
-  write_safehex_of_int buf n; Buffer.contents buf
+  writehex_int buf n; Buffer.contents buf
 ;;
 
 let safehex_to_int s =
@@ -84,7 +91,7 @@ let safehex_to_int s =
   | exception Invalid_safehex -> error "bad safe-hex"
 ;;
 
-let write_safehex_of_string buf s =
+let writehex_string buf s =
   for i = 0 to String.length s - 1 do
     let b = Char.code s.[i] in
     Buffer.add_char buf safehex_alphabet.[b lsr 4];
@@ -106,13 +113,32 @@ let string_of_safehex s =
   | exception Invalid_safehex -> error "bad safe-hex"
 ;;
 
-let[@inline] validate_key k =
-  let kl = String.length k in
-  if kl < 64 || kl > 128 then die_arg "key length not in 64..128: %d" kl
+let split_token str =
+  match String.split_on_char '9' str with
+  | [ a; b ] -> Ok (a, b)
+  | _ -> error "split_token: malformed token"
 ;;
 
 let[@inline] sign key payload =
   Digestif.SHA224.(hmac_string ~key payload |> to_raw_string)
+;;
+
+let[@inline] validate_key k =
+  let kl = String.length k in
+  if kl < 64 || kl > 128
+  then die_arg "validate_key: length not in 64..128: %d" kl
+;;
+
+let validate_sig ?(len = 28) ?yesterday ~today to_sign sig_raw =
+  let check_sig =
+    if len >= 28
+    then fun key -> Eqaf.equal (sign key to_sign) sig_raw
+    else fun key -> Eqaf.equal (String.sub (sign key to_sign) 0 len) sig_raw
+  in
+  match check_sig today, yesterday with
+  | true, _ -> Ok ()
+  | false, Some y when check_sig y -> Ok ()
+  | _ -> error "validate_sig: bad signature"
 ;;
 
 module Session = struct
@@ -123,131 +149,77 @@ module Session = struct
   let user_id s = s.user_id
   let admin_id s = s.admin_id
 
-  (* FIXME: needs review *)
   let encode ~key ?now ?(salt = "") ~user_id ?admin_id expires =
     validate_key key;
-    let now = now ||| (Unix.time () |> int_of_float) in
-    let@ () = guard_res (user_id >= 0) "Session.encode: negative user_id" in
+    let now = now ||~ fun () -> Unix.time () |> int_of_float in
+    let@ () = guard_res (user_id >= 0) "Session: negative user_id" in
+    let@ () = guard_res (admin_id ||| 0 >= 0) "Session: negative admin_id" in
     let@ () =
-      guard_res
-        (Option.value ~default:0 admin_id >= 0)
-        "Session.encode: negative admin_id"
-    in
-    let@ () =
-      guard_res (expires >= 1 && expires <= 1440) "Session.encode: bad expires"
+      guard_res (expires >= 1 && expires <= 1440) "Session: bad expires"
     in
     let issued_off = now - epoch_offset in
-    let@ () =
-      guard_res (issued_off >= 0) "Session.encode: timestamp before epoch"
-    in
+    let@ () = guard_res (issued_off >= 0) "Session: now before epoch" in
     let buf = Buffer.create 124 in
-    write_safehex_of_int buf issued_off;
+    writehex_int buf issued_off;
     Buffer.add_char buf '5';
-    write_safehex_of_int buf expires;
+    writehex_int buf expires;
     Buffer.add_char buf '5';
-    write_safehex_of_int buf user_id;
-    Option.iter
-      (fun a -> Buffer.add_char buf '5'; write_safehex_of_int buf a)
-      admin_id;
+    writehex_int buf user_id;
+    Option.iter (fun a -> Buffer.add_char buf '5'; writehex_int buf a) admin_id;
     let payload = Buffer.contents buf in
     let hmac = sign key (salt ^ ":" ^ payload) in
     Buffer.add_char buf '9';
-    write_safehex_of_string buf hmac;
+    writehex_string buf hmac;
     Ok (Buffer.contents buf)
   ;;
 
-  (* FIXME: needs review *)
   let decode ?(salt = "") ?yesterday ~today str =
     validate_key today;
     Option.iter validate_key yesterday;
     let len = String.length str in
-    let@ () = guard_res (len <= 124) "Session.decode: token too long" in
-    let* payload, sig_hex =
-      match String.split_on_char '9' str with
-      | [ a; b ] -> Ok (a, b)
-      | _ -> error "Session.decode: malformed token"
-    in
+    let@ () = guard_res (len <= 124) "Session: token too long" in
+    let* payload, sig_hex = split_token str in
     let* sig_raw = string_of_safehex sig_hex in
     let@ () =
-      guard_res
-        (String.length sig_raw = 28)
-        "Session.decode: bad signature length"
+      guard_res (String.length sig_raw = 28) "Session: bad signature length"
     in
-    let to_sign = salt ^ ":" ^ payload in
-    let check_sig key =
-      let computed = sign key to_sign in
-      Eqaf.equal computed sig_raw
-    in
-    let* () =
-      match check_sig today, yesterday with
-      | true, _ -> Ok ()
-      | false, Some y when check_sig y -> Ok ()
-      | _ -> error "Session.decode: bad signature"
-    in
+    let* () = validate_sig ?yesterday ~today (salt ^ ":" ^ payload) sig_raw in
     match String.split_on_char '5' payload with
-    | [ iss; exp; usr ] ->
+    | iss :: exp :: usr :: rest ->
       let* issued_off = safehex_to_int iss in
       let* expires = safehex_to_int exp in
       let* user_id = safehex_to_int usr in
+      let* admin_id =
+        match rest with
+        | [] -> Ok None
+        | [ adm ] -> safehex_to_int adm |> Result.map Option.some
+        | _ -> error "Session: malformed payload"
+      in
       let@ () =
         guard_res
           (issued_off <= max_int - epoch_offset)
-          "Session.decode: integer overflow"
+          "Session: integer overflow"
       in
       let@ () =
-        guard_res
-          (expires >= 1 && expires <= 1440)
-          "Session.decode: bad expires"
+        guard_res (expires >= 1 && expires <= 1440) "Session: bad expires"
       in
-      Ok
-        {
-          issued_at = issued_off + epoch_offset;
-          expires;
-          user_id;
-          admin_id = None;
-        }
-    | [ iss; exp; usr; adm ] ->
-      let* issued_off = safehex_to_int iss in
-      let* expires = safehex_to_int exp in
-      let* user_id = safehex_to_int usr in
-      let* admin_id = safehex_to_int adm in
-      let@ () =
-        guard_res
-          (issued_off <= max_int - epoch_offset)
-          "Session.decode: integer overflow"
-      in
-      let@ () =
-        guard_res
-          (expires >= 1 && expires <= 1440)
-          "Session.decode: bad expires"
-      in
-      Ok
-        {
-          issued_at = issued_off + epoch_offset;
-          expires;
-          user_id;
-          admin_id = Some admin_id;
-        }
-    | _ -> error "Session.decode: malformed payload"
+      Ok { issued_at = issued_off + epoch_offset; expires; user_id; admin_id }
+    | _ -> error "Session: malformed payload"
   ;;
 
   let validate ?now ?admin_logout_at ~logout_at t =
-    let now = now ||| (Unix.time () |> int_of_float) in
+    let now = now ||~ fun () -> Unix.time () |> int_of_float in
+    let@ () = guard_res (t.issued_at <= now + 5) "Session: future token" in
     let@ () =
-      guard_res (t.issued_at <= now + 5) "Session.validate: future token"
-    in
-    let@ () =
-      guard_res
-        (now < t.issued_at + (t.expires * 60))
-        "Session.validate: expired"
+      guard_res (now < t.issued_at + (t.expires * 60)) "Session: expired"
     in
     let* () =
       match t.admin_id, admin_logout_at with
       | Some _, Some alo when t.issued_at > alo -> Ok ()
-      | Some _, Some _ -> error "Session.validate: admin logged out"
-      | Some _, None -> error "Session.validate: missing admin_logout_at"
+      | Some _, Some _ -> error "Session: admin logged out"
+      | Some _, None -> error "Session: missing admin_logout_at"
       | None, _ when t.issued_at > logout_at -> Ok ()
-      | None, _ -> error "Session.validate: logged out"
+      | None, _ -> error "Session: logged out"
     in
     Ok (now < t.issued_at + (t.expires * 12))
   ;;
@@ -262,27 +234,23 @@ module Link = struct
 
   let encode ~key ?now ~action ~user_id expires =
     validate_key key;
-    let now = now ||| (Unix.time () |> int_of_float) in
-    let@ () = guard_res (action <> "") "Link.encode: empty action" in
-    let@ () = guard_res (user_id >= 0) "Link.encode: negative user_id" in
-    let@ () =
-      guard_res (expires >= 1 && expires <= 1440) "Link.encode: bad expires"
-    in
+    let now = now ||~ fun () -> Unix.time () |> int_of_float in
+    let@ () = guard_res (action <> "") "Link: empty action" in
+    let@ () = guard_res (user_id >= 0) "Link: negative user_id" in
+    let@ () = guard_res (expires >= 1 && expires <= 1440) "Link: bad expires" in
     let issued_off = now - epoch_offset in
-    let@ () =
-      guard_res (issued_off >= 0) "Link.encode: timestamp before epoch"
-    in
+    let@ () = guard_res (issued_off >= 0) "Link: timestamp before epoch" in
     let buf = Buffer.create 83 in
-    write_safehex_of_int buf issued_off;
+    writehex_int buf issued_off;
     Buffer.add_char buf '5';
-    write_safehex_of_int buf expires;
+    writehex_int buf expires;
     Buffer.add_char buf '5';
-    write_safehex_of_int buf user_id;
+    writehex_int buf user_id;
     let payload = Buffer.contents buf in
     let hmac = sign key (action ^ "=" ^ payload) in
     let sig_raw = String.sub hmac 0 16 in
     Buffer.add_char buf '9';
-    write_safehex_of_string buf sig_raw;
+    writehex_string buf sig_raw;
     Ok (Buffer.contents buf)
   ;;
 
@@ -290,27 +258,14 @@ module Link = struct
     validate_key today;
     Option.iter validate_key yesterday;
     let len = String.length str in
-    let@ () = guard_res (len <= 83) "Link.decode: token too long" in
-    let* payload, sig_hex =
-      match String.split_on_char '9' str with
-      | [ a; b ] -> Ok (a, b)
-      | _ -> error "Link.decode: malformed token"
-    in
+    let@ () = guard_res (len <= 83) "Link: token too long" in
+    let* payload, sig_hex = split_token str in
     let* sig_raw = string_of_safehex sig_hex in
     let@ () =
-      guard_res (String.length sig_raw = 16) "Link.decode: bad signature length"
+      guard_res (String.length sig_raw = 16) "Link: bad signature length"
     in
     let to_sign = action ^ "=" ^ payload in
-    let check_sig key =
-      let computed = sign key to_sign in
-      Eqaf.equal (String.sub computed 0 16) sig_raw
-    in
-    let* () =
-      match check_sig today, yesterday with
-      | true, _ -> Ok ()
-      | false, Some y when check_sig y -> Ok ()
-      | _ -> error "Link.decode: bad signature"
-    in
+    let* () = validate_sig ~len:16 ?yesterday ~today to_sign sig_raw in
     match String.split_on_char '5' payload with
     | [ iss; exp; usr ] ->
       let* issued_off = safehex_to_int iss in
@@ -319,25 +274,21 @@ module Link = struct
       let@ () =
         guard_res
           (issued_off <= max_int - epoch_offset)
-          "Link.decode: integer overflow"
+          "Link: integer overflow"
       in
       let@ () =
-        guard_res (expires >= 1 && expires <= 1440) "Link.decode: bad expires"
+        guard_res (expires >= 1 && expires <= 1440) "Link: bad expires"
       in
       Ok { issued_at = issued_off + epoch_offset; expires; user_id }
-    | _ -> error "Link.decode: malformed payload"
+    | _ -> error "Link: malformed payload"
   ;;
 
   let validate ?now ~last_nonce_at t =
-    let now = now ||| (Unix.time () |> int_of_float) in
+    let now = now ||~ fun () -> Unix.time () |> int_of_float in
+    let@ () = guard_res (t.issued_at <= now + 5) "Link: future token" in
+    let@ () = guard_res (t.issued_at > last_nonce_at) "Link: no longer valid" in
     let@ () =
-      guard_res (t.issued_at <= now + 5) "Link.validate: future token"
-    in
-    let@ () =
-      guard_res (now < t.issued_at + (t.expires * 60)) "Link.validate: expired"
-    in
-    let@ () =
-      guard_res (t.issued_at > last_nonce_at) "Link.validate: no longer valid"
+      guard_res (now < t.issued_at + (t.expires * 60)) "Link: expired"
     in
     Ok ()
   ;;
@@ -346,22 +297,22 @@ end
 module CSRF = struct
   let encode ~key ?rand ~user_id form_id =
     validate_key key;
-    let@ () = guard_res (form_id <> "") "CSRF.encode: empty form_id" in
-    let@ () = guard_res (user_id >= 0) "CSRF.encode: negative user_id" in
+    let@ () = guard_res (form_id <> "") "CSRF: empty form_id" in
+    let@ () = guard_res (user_id >= 0) "CSRF: negative user_id" in
     let* rand =
       match rand with
       | Some r when r >= 0 && r <= 0xFFFFFFFF -> Ok r
-      | Some _ -> error "CSRF.encode: rand out of range"
+      | Some _ -> error "CSRF: rand out of range"
       | None -> Ok (Random.full_int 0xFFFFFFFF)
     in
     let buf = Buffer.create 41 in
-    write_safehex_of_int buf rand;
+    writehex_int buf rand;
     let payload = Buffer.contents buf in
     let salt = form_id ^ ":" ^ safehex_of_int user_id in
     let hmac = sign key (salt ^ "~" ^ payload) in
     let sig_raw = String.sub hmac 0 12 in
     Buffer.add_char buf '9';
-    write_safehex_of_string buf sig_raw;
+    writehex_string buf sig_raw;
     Ok (Buffer.contents buf)
   ;;
 
@@ -369,33 +320,17 @@ module CSRF = struct
     validate_key today;
     Option.iter validate_key yesterday;
     let len = String.length str in
-    let@ () = guard_res (len <= 41) "CSRF.validate: token too long" in
-    let* payload, sig_hex =
-      match String.split_on_char '9' str with
-      | [ a; b ] -> Ok (a, b)
-      | _ -> error "CSRF.validate: malformed token"
-    in
+    let@ () = guard_res (len <= 41) "CSRF: token too long" in
+    let* payload, sig_hex = split_token str in
     let* sig_raw = string_of_safehex sig_hex in
     let@ () =
-      guard_res
-        (String.length sig_raw = 12)
-        "CSRF.validate: bad signature length"
+      guard_res (String.length sig_raw = 12) "CSRF: bad signature length"
     in
     let@ () =
-      guard_res
-        (not (String.contains payload '5'))
-        "CSRF.validate: malformed payload"
+      guard_res (not (String.contains payload '5')) "CSRF: malformed payload"
     in
     let* _rand = safehex_to_int payload in
     let salt = form_id ^ ":" ^ safehex_of_int user_id in
-    let to_sign = salt ^ "~" ^ payload in
-    let check_sig key =
-      let computed = sign key to_sign in
-      Eqaf.equal (String.sub computed 0 12) sig_raw
-    in
-    match check_sig today, yesterday with
-    | true, _ -> Ok ()
-    | false, Some y when check_sig y -> Ok ()
-    | _ -> error "CSRF.validate: bad signature"
+    validate_sig ~len:12 ?yesterday ~today (salt ^ "~" ^ payload) sig_raw
   ;;
 end
