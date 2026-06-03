@@ -8,7 +8,7 @@ BWT authenticates users. It does not provide CSRF protection, request authorizat
 
 ## Test Vectors
 
-File [test-vectors.json](test-vectors.json) contains exhaustive tests to use when developing new implementations of BWT.  The initial set was created from the OCaml reference implementation using [ocaml/bwt_vectors.ml](ocaml/bwt_vectors.ml).
+File [test-vectors.json](test-vectors.json) contains exhaustive tests to use when developing new implementations of BWT.  See [test-vectors.md](test-vectors.md) for a description of the JSON structure.  The initial set was created from the OCaml reference implementation using [ocaml/bwt_vectors.ml](ocaml/bwt_vectors.ml).
 
 ## STATUS
 
