@@ -184,6 +184,28 @@ let session_positives () =
     session_positive ~name:"future within 5s skew (fresh)" ~key_name:"today"
       ~salt:"" ~now:(fixed_now + 5) ~user_id:1 ~expires:60
       ~validate_now:fixed_now ~logout_at:0 "fresh";
+    session_positive
+      ~name:"admin with high logout_at (only admin_logout_at matters)"
+      ~key_name:"today" ~salt:"" ~now:fixed_now ~user_id:1 ~admin_id:99
+      ~expires:60 ~validate_now:fixed_now ~logout_at:fixed_now
+      ~admin_logout_at:0 "fresh";
+    session_positive ~name:"logout_at boundary (just before issued_at)"
+      ~key_name:"today" ~salt:"" ~now:fixed_now ~user_id:1 ~expires:60
+      ~validate_now:fixed_now ~logout_at:(fixed_now - 1) "fresh";
+    session_positive ~name:"admin_logout_at boundary (just before issued_at)"
+      ~key_name:"today" ~salt:"" ~now:fixed_now ~user_id:1 ~admin_id:99
+      ~expires:60 ~validate_now:fixed_now ~logout_at:0
+      ~admin_logout_at:(fixed_now - 1) "fresh";
+    session_positive ~name:"user_id=0" ~key_name:"today" ~salt:"" ~now:fixed_now
+      ~user_id:0 ~expires:60 ~validate_now:fixed_now ~logout_at:0 "fresh";
+    session_positive
+      ~name:"non-admin with high admin_logout_at (ignored for non-admin)"
+      ~key_name:"today" ~salt:"" ~now:fixed_now ~user_id:1 ~expires:60
+      ~validate_now:fixed_now ~logout_at:0 ~admin_logout_at:fixed_now "fresh";
+    session_positive ~name:"admin_id=user_id (self-impersonation)"
+      ~key_name:"today" ~salt:"" ~now:fixed_now ~user_id:1 ~admin_id:1
+      ~expires:60 ~validate_now:fixed_now ~logout_at:0 ~admin_logout_at:0
+      "fresh";
   ]
 ;;
 
@@ -251,6 +273,9 @@ let link_positives () =
     link_positive ~name:"nonce just before issued_at (valid)" ~key_name:"today"
       ~action:"login" ~now:fixed_now ~user_id:1 ~expires:60
       ~validate_now:fixed_now ~last_nonce_at:(fixed_now - 1) "valid";
+    link_positive ~name:"user_id=0" ~key_name:"today" ~action:"login"
+      ~now:fixed_now ~user_id:0 ~expires:60 ~validate_now:fixed_now
+      ~last_nonce_at:0 "valid";
   ]
 ;;
 
@@ -299,6 +324,9 @@ let csrf_positives () =
       ~user_id:1 ~form_id:"login" ~validate_today:"today"
       ~validate_yesterday:"yesterday" ~validate_form_id:"login"
       ~validate_user_id:1 "valid";
+    csrf_positive ~name:"user_id=0" ~key_name:"today" ~rand:42 ~user_id:0
+      ~form_id:"login" ~validate_today:"today" ~validate_form_id:"login"
+      ~validate_user_id:0 "valid";
   ]
 ;;
 
@@ -549,6 +577,36 @@ let session_negatives () =
       ~salt:"" ~now:fixed_now ~logout_at:0 ~admin_logout_at:fixed_now ();
     neg_session_validate ~name:"session: missing admin_logout_at"
       session_admin_tok ~salt:"" ~now:fixed_now ~logout_at:0 ();
+    neg_session_decode ~name:"session: empty string" "" ~salt:"";
+    neg_session_decode ~name:"session: just separator" "9" ~salt:"";
+    neg_session_decode ~name:"session: empty payload"
+      ("9" ^ String.make 56 'H')
+      ~salt:"";
+    neg_session_decode ~name:"session: empty signature" "H5H5H9" ~salt:"";
+    neg_session_decode ~name:"session: signature too short (55 chars)"
+      ("H5H5H9" ^ String.make 55 'H')
+      ~salt:"";
+    neg_session_decode ~name:"session: signature too long (57 chars)"
+      ("H5H5H9" ^ String.make 57 'H')
+      ~salt:"";
+    neg_session_decode ~name:"session: too long"
+      (String.make 68 'H' ^ "9" ^ String.make 56 'H')
+      ~salt:"";
+    neg_session_decode ~name:"session: forged trailing delimiter"
+      (forge_session ~salt:"" "H5H5H5")
+      ~salt:"";
+    neg_session_decode ~name:"session: forged leading zero in expires"
+      (forge_session ~salt:"" "H5GH5H")
+      ~salt:"";
+    neg_session_decode ~name:"session: forged leading zero in admin_id"
+      (forge_session ~salt:"" "H5H5H5GH")
+      ~salt:"";
+    neg_session_decode ~name:"session: lowercase safe-hex in payload"
+      (forge_session ~salt:"" "h5H5H")
+      ~salt:"";
+    neg_session_decode ~name:"session: double separator"
+      ("H5H5H99" ^ String.make 56 'H')
+      ~salt:"";
   ]
 ;;
 
@@ -608,6 +666,36 @@ let link_negatives () =
       link_future6_tok ~action:"login" ~now:fixed_now ~last_nonce_at:0;
     neg_link_validate ~name:"link: nonce consumed" link_tok ~action:"login"
       ~now:fixed_now ~last_nonce_at:fixed_now;
+    neg_link_decode ~name:"link: empty string" "" ~action:"login";
+    neg_link_decode ~name:"link: just separator" "9" ~action:"login";
+    neg_link_decode ~name:"link: empty payload"
+      ("9" ^ String.make 32 'H')
+      ~action:"login";
+    neg_link_decode ~name:"link: empty signature" "H5H5H9" ~action:"login";
+    neg_link_decode ~name:"link: signature too short (31 chars)"
+      ("H5H5H9" ^ String.make 31 'H')
+      ~action:"login";
+    neg_link_decode ~name:"link: signature too long (33 chars)"
+      ("H5H5H9" ^ String.make 33 'H')
+      ~action:"login";
+    neg_link_decode ~name:"link: forged trailing delimiter"
+      (forge_link ~action:"login" "H5H5H5")
+      ~action:"login";
+    neg_link_decode ~name:"link: forged leading zero in expires"
+      (forge_link ~action:"login" "H5GH5H")
+      ~action:"login";
+    neg_link_decode ~name:"link: forged leading zero in user_id"
+      (forge_link ~action:"login" "H5H5GH")
+      ~action:"login";
+    neg_link_decode ~name:"link: multiple separators"
+      ("H5H5H9H5H5H9" ^ String.make 32 'H')
+      ~action:"login";
+    neg_link_decode ~name:"link: lowercase safe-hex in payload"
+      (forge_link ~action:"login" "h5H5H")
+      ~action:"login";
+    neg_link_decode ~name:"link: double separator"
+      ("H5H5H99" ^ String.make 32 'H')
+      ~action:"login";
   ]
 ;;
 
@@ -641,6 +729,30 @@ let csrf_negatives () =
       ~form_id:"login" ~user_id:1;
     neg_csrf ~name:"CSRF: unknown key rejected with both keys"
       ~yesterday:"yesterday" csrf_other_tok ~form_id:"login" ~user_id:1;
+    neg_csrf ~name:"CSRF: signature too short (23 chars)"
+      ("JS9" ^ String.make 23 'H')
+      ~form_id:"login" ~user_id:1;
+    neg_csrf ~name:"CSRF: signature too long (25 chars)"
+      ("JS9" ^ String.make 25 'H')
+      ~form_id:"login" ~user_id:1;
+    neg_csrf ~name:"CSRF: empty string" "" ~form_id:"login" ~user_id:1;
+    neg_csrf ~name:"CSRF: just separator" "9" ~form_id:"login" ~user_id:1;
+    neg_csrf ~name:"CSRF: empty payload"
+      ("9" ^ String.make 24 'H')
+      ~form_id:"login" ~user_id:1;
+    neg_csrf ~name:"CSRF: empty signature" "H9" ~form_id:"login" ~user_id:1;
+    neg_csrf ~name:"CSRF: forged leading zero in rand"
+      (forge_csrf ~form_id:"login" ~user_id:1 "GH")
+      ~form_id:"login" ~user_id:1;
+    neg_csrf ~name:"CSRF: multiple separators"
+      ("H9H9" ^ String.make 24 'H')
+      ~form_id:"login" ~user_id:1;
+    neg_csrf ~name:"CSRF: lowercase safe-hex in payload"
+      (forge_csrf ~form_id:"login" ~user_id:1 "h")
+      ~form_id:"login" ~user_id:1;
+    neg_csrf ~name:"CSRF: double separator"
+      ("H99" ^ String.make 24 'H')
+      ~form_id:"login" ~user_id:1;
   ]
 ;;
 
