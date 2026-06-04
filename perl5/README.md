@@ -7,11 +7,9 @@ As of this version, the only dependencies are:
 * `Digest::SHA`
 * `JSON` (testing only)
 
-## TODO
+## Installation
 
-- [ ] Create `lib/BWT.pm`
-- [ ] Create `t/01_safehex.t`
-- [ ] Create `t/02_vectors.t` using `../test-vectors.json`
+This package is not published on CPAN.  The simplest approach is vendoring: copy the single file `lib/BWT.pm` into your project.
 
 ## Cryptographically Secure Key Generation
 
