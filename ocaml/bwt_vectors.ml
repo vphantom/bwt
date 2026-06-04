@@ -91,6 +91,19 @@ let forge_link ~action payload =
   payload ^ "9" ^ String.sub sig_hex 0 32
 ;;
 
+(** Forge a CSRF token: sign [payload] with [key_today] and
+    [form_id]:[safehex(user_id)] using CSRF's separator [~] and truncated
+    24-char safe-hex signature. *)
+let forge_csrf ~form_id ~user_id payload =
+  let salt = form_id ^ ":" ^ Bwt.safehex_of_int user_id in
+  let hmac_input = salt ^ "~" ^ payload in
+  let raw_sig =
+    Digestif.SHA224.(hmac_string ~key:key_today hmac_input |> to_raw_string)
+  in
+  let sig_hex = Bwt.safehex_of_string raw_sig in
+  payload ^ "9" ^ String.sub sig_hex 0 24
+;;
+
 (* ===== Positive Session Vectors ===== *)
 
 let session_positive ~name ~key_name ~salt ~now ~user_id ?admin_id ~expires
@@ -297,7 +310,7 @@ let csrf_positives () =
     (expecting success) then validates with the given parameters and expects an
     error. *)
 
-let neg_session_decode ~name token ~salt =
+let neg_session_decode ~name ?yesterday token ~salt =
   `Assoc
     [
       "name", `String name;
@@ -305,8 +318,11 @@ let neg_session_decode ~name token ~salt =
       "should_fail_at", `String "decode";
       ( "decode",
         `Assoc
-          [ "today", `String "today"; "yesterday", `Null; "salt", `String salt ]
-      );
+          [
+            "today", `String "today";
+            "yesterday", string_or_null yesterday;
+            "salt", `String salt;
+          ] );
     ]
 ;;
 
@@ -330,7 +346,7 @@ let neg_session_validate ~name token ~salt ~now ~logout_at ?admin_logout_at () =
     ]
 ;;
 
-let neg_link_decode ~name token ~action =
+let neg_link_decode ~name ?yesterday token ~action =
   `Assoc
     [
       "name", `String name;
@@ -340,7 +356,7 @@ let neg_link_decode ~name token ~action =
         `Assoc
           [
             "today", `String "today";
-            "yesterday", `Null;
+            "yesterday", string_or_null yesterday;
             "action", `String action;
           ] );
     ]
@@ -364,7 +380,7 @@ let neg_link_validate ~name token ~action ~now ~last_nonce_at =
     ]
 ;;
 
-let neg_csrf ~name token ~form_id ~user_id =
+let neg_csrf ~name ?yesterday token ~form_id ~user_id =
   `Assoc
     [
       "name", `String name;
@@ -374,7 +390,7 @@ let neg_csrf ~name token ~form_id ~user_id =
         `Assoc
           [
             "today", `String "today";
-            "yesterday", `Null;
+            "yesterday", string_or_null yesterday;
             "form_id", `String form_id;
             "user_id", `Int user_id;
           ] );
@@ -450,6 +466,23 @@ let csrf_yesterday_tok =
   Bwt.CSRF.encode ~key:key_yesterday ~rand:42 ~user_id:1 "login" |> unwrap
 ;;
 
+(* A third key not published in the keys map, for "unknown key" negative
+   tests *)
+let key_other = String.make 64 'X'
+
+let session_other_tok =
+  Bwt.Session.encode ~key:key_other ~now:fixed_now ~user_id:1 60 |> unwrap
+;;
+
+let link_other_tok =
+  Bwt.Link.encode ~key:key_other ~now:fixed_now ~action:"login" ~user_id:1 60
+  |> unwrap
+;;
+
+let csrf_other_tok =
+  Bwt.CSRF.encode ~key:key_other ~rand:42 ~user_id:1 "login" |> unwrap
+;;
+
 let session_negatives () =
   [
     neg_session_decode ~name:"link token in session decoder" link_tok ~salt:"";
@@ -484,10 +517,24 @@ let session_negatives () =
     neg_session_decode ~name:"session: forged too many fields"
       (forge_session ~salt:"" "H5H5H5H5H")
       ~salt:"";
+    neg_session_decode ~name:"session: forged expires=0"
+      (forge_session ~salt:"" "H5G5H")
+      ~salt:"";
+    neg_session_decode ~name:"session: forged expires=1441"
+      (forge_session ~salt:"" "H5MSH5H")
+      ~salt:"";
+    neg_session_decode ~name:"session: forged leading zero in user_id"
+      (forge_session ~salt:"" "H5H5GH")
+      ~salt:"";
+    neg_session_decode ~name:"session: forged invalid char in user_id"
+      (forge_session ~salt:"" "H5H5A")
+      ~salt:"";
     neg_session_decode ~name:"session: wrong salt" session_salt_tok
       ~salt:"wrong";
     neg_session_decode ~name:"session: only today rejects yesterday key"
       session_yesterday_tok ~salt:"";
+    neg_session_decode ~name:"session: unknown key rejected with both keys"
+      ~yesterday:"yesterday" session_other_tok ~salt:"";
     neg_session_validate ~name:"session: expired" session_10min_tok ~salt:""
       ~now:(fixed_now + 601) ~logout_at:0 ();
     neg_session_validate ~name:"session: expiry boundary at 600s"
@@ -517,6 +564,11 @@ let link_negatives () =
       ~action:"login";
     neg_link_decode ~name:"link: invalid char in signature"
       (corrupt_sig link_tok) ~action:"login";
+    neg_link_decode ~name:"link: no separator" (String.make 40 'H')
+      ~action:"login";
+    neg_link_decode ~name:"link: too long"
+      (String.make 51 'H' ^ "9" ^ String.make 32 'H')
+      ~action:"login";
     neg_link_decode ~name:"link: forged empty field"
       (forge_link ~action:"login" "H55H")
       ~action:"login";
@@ -535,9 +587,17 @@ let link_negatives () =
     neg_link_decode ~name:"link: forged too many fields"
       (forge_link ~action:"login" "H5H5H5H")
       ~action:"login";
+    neg_link_decode ~name:"link: forged expires=0"
+      (forge_link ~action:"login" "H5G5H")
+      ~action:"login";
+    neg_link_decode ~name:"link: forged expires=1441"
+      (forge_link ~action:"login" "H5MSH5H")
+      ~action:"login";
     neg_link_decode ~name:"link: wrong action" link_tok ~action:"password-reset";
     neg_link_decode ~name:"link: only today rejects yesterday key"
       link_yesterday_tok ~action:"login";
+    neg_link_decode ~name:"link: unknown key rejected with both keys"
+      ~yesterday:"yesterday" link_other_tok ~action:"login";
     neg_link_validate ~name:"link: expired" link_10min_tok ~action:"login"
       ~now:(fixed_now + 601) ~last_nonce_at:0;
     neg_link_validate ~name:"link: expiry boundary at 600s" link_10min_tok
@@ -564,10 +624,23 @@ let csrf_negatives () =
       ~form_id:"login" ~user_id:1;
     neg_csrf ~name:"CSRF: invalid char in signature" (corrupt_sig csrf_tok)
       ~form_id:"login" ~user_id:1;
+    neg_csrf ~name:"CSRF: no separator" (String.make 30 'H') ~form_id:"login"
+      ~user_id:1;
+    neg_csrf ~name:"CSRF: wrong signature byte length"
+      ("JS9" ^ String.make 22 'H')
+      ~form_id:"login" ~user_id:1;
+    neg_csrf ~name:"CSRF: compound payload"
+      (forge_csrf ~form_id:"login" ~user_id:1 "H5H")
+      ~form_id:"login" ~user_id:1;
+    neg_csrf ~name:"CSRF: invalid safe-hex in payload"
+      (forge_csrf ~form_id:"login" ~user_id:1 "A")
+      ~form_id:"login" ~user_id:1;
     neg_csrf ~name:"CSRF: wrong form_id" csrf_tok ~form_id:"settings" ~user_id:1;
     neg_csrf ~name:"CSRF: wrong user_id" csrf_tok ~form_id:"login" ~user_id:999;
     neg_csrf ~name:"CSRF: only today rejects yesterday key" csrf_yesterday_tok
       ~form_id:"login" ~user_id:1;
+    neg_csrf ~name:"CSRF: unknown key rejected with both keys"
+      ~yesterday:"yesterday" csrf_other_tok ~form_id:"login" ~user_id:1;
   ]
 ;;
 

@@ -299,6 +299,30 @@
         "decode": { "today": "today", "yesterday": null, "salt": "" }
       },
       {
+        "name": "session: forged expires=0",
+        "token": "H5G5H9VLQZSMMLZZVPRSKVVXRWHRHVMSWTTTZZKHRJJLNJTVLQPMJWVQRLJRTQ",
+        "should_fail_at": "decode",
+        "decode": { "today": "today", "yesterday": null, "salt": "" }
+      },
+      {
+        "name": "session: forged expires=1441",
+        "token": "H5MSH5H9JVHHGXXTMSKVKTQPRGGKVRJPNQTSHJWJHHJHKSMRZLTNRGMMVNTPPRHK",
+        "should_fail_at": "decode",
+        "decode": { "today": "today", "yesterday": null, "salt": "" }
+      },
+      {
+        "name": "session: forged leading zero in user_id",
+        "token": "H5H5GH9NNHNHMQPQVJMRLKXKKQZZQVVWTNKXNGTGKWTGJTMZQPGMXGWLPSQWJWG",
+        "should_fail_at": "decode",
+        "decode": { "today": "today", "yesterday": null, "salt": "" }
+      },
+      {
+        "name": "session: forged invalid char in user_id",
+        "token": "H5H5A9RTWSVNJXTXWVXSQJXHPGGLGWWHTMRRTPSPNWPMRLPPGJTTHKVVNHXGXV",
+        "should_fail_at": "decode",
+        "decode": { "today": "today", "yesterday": null, "salt": "" }
+      },
+      {
         "name": "session: wrong salt",
         "token": "RQRNQG5KV5H9JQVQMJMTZMPRKRXZPXJHHLPTPPTRHPKXLRGKLQRSXMNSJRKWZMXKJLKP",
         "should_fail_at": "decode",
@@ -309,6 +333,12 @@
         "token": "RQRNQG5KV5H9WLLRPPGLPLWVHGZPXWKSTSLQMVTPRVKQQHVJRKNXMXXMSWRLGTWSWPGQ",
         "should_fail_at": "decode",
         "decode": { "today": "today", "yesterday": null, "salt": "" }
+      },
+      {
+        "name": "session: unknown key rejected with both keys",
+        "token": "RQRNQG5KV5H9PMNTLJZXXHSJJNXWTTLSZNZVKLZPLKVNVQRWZSPTRPVHXRWZKHMWVMXL",
+        "should_fail_at": "decode",
+        "decode": { "today": "today", "yesterday": "yesterday", "salt": "" }
       },
       {
         "name": "session: expired",
@@ -551,6 +581,18 @@
         "decode": { "today": "today", "yesterday": null, "action": "login" }
       },
       {
+        "name": "link: no separator",
+        "token": "HHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHH",
+        "should_fail_at": "decode",
+        "decode": { "today": "today", "yesterday": null, "action": "login" }
+      },
+      {
+        "name": "link: too long",
+        "token": "HHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHH9HHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHH",
+        "should_fail_at": "decode",
+        "decode": { "today": "today", "yesterday": null, "action": "login" }
+      },
+      {
         "name": "link: forged empty field",
         "token": "H55H9JWTPPTKRLPGPRMSLWQWJQLMZKPPKKNVL",
         "should_fail_at": "decode",
@@ -587,6 +629,18 @@
         "decode": { "today": "today", "yesterday": null, "action": "login" }
       },
       {
+        "name": "link: forged expires=0",
+        "token": "H5G5H9RPJZKNKWXMSPSQSQMKZNNSWGSPVSLPQT",
+        "should_fail_at": "decode",
+        "decode": { "today": "today", "yesterday": null, "action": "login" }
+      },
+      {
+        "name": "link: forged expires=1441",
+        "token": "H5MSH5H9VTPRLZPLKJXNSJRXMQPPSRHPMXMLXPPS",
+        "should_fail_at": "decode",
+        "decode": { "today": "today", "yesterday": null, "action": "login" }
+      },
+      {
         "name": "link: wrong action",
         "token": "RQRNQG5KV5H9ZLVTJRJMGQHJQHSNZRMJLTPHZQGNPSZX",
         "should_fail_at": "decode",
@@ -601,6 +655,16 @@
         "token": "RQRNQG5KV5H9XQRNQMRJGWPRVQGKNTGKPZVKTLPMSMZM",
         "should_fail_at": "decode",
         "decode": { "today": "today", "yesterday": null, "action": "login" }
+      },
+      {
+        "name": "link: unknown key rejected with both keys",
+        "token": "RQRNQG5KV5H9KRQMPHJPPGXTRPWHKQZPWRVSTSKQGNPR",
+        "should_fail_at": "decode",
+        "decode": {
+          "today": "today",
+          "yesterday": "yesterday",
+          "action": "login"
+        }
       },
       {
         "name": "link: expired",
@@ -767,6 +831,50 @@
         }
       },
       {
+        "name": "CSRF: no separator",
+        "token": "HHHHHHHHHHHHHHHHHHHHHHHHHHHHHH",
+        "should_fail_at": "validate",
+        "validate": {
+          "today": "today",
+          "yesterday": null,
+          "form_id": "login",
+          "user_id": 1
+        }
+      },
+      {
+        "name": "CSRF: wrong signature byte length",
+        "token": "JS9HHHHHHHHHHHHHHHHHHHHHH",
+        "should_fail_at": "validate",
+        "validate": {
+          "today": "today",
+          "yesterday": null,
+          "form_id": "login",
+          "user_id": 1
+        }
+      },
+      {
+        "name": "CSRF: compound payload",
+        "token": "H5H9JQHRQHMXRNLGPPHTVGKMNNVV",
+        "should_fail_at": "validate",
+        "validate": {
+          "today": "today",
+          "yesterday": null,
+          "form_id": "login",
+          "user_id": 1
+        }
+      },
+      {
+        "name": "CSRF: invalid safe-hex in payload",
+        "token": "A9NLQQGRQSZVWTLNRZXMKWVRTL",
+        "should_fail_at": "validate",
+        "validate": {
+          "today": "today",
+          "yesterday": null,
+          "form_id": "login",
+          "user_id": 1
+        }
+      },
+      {
         "name": "CSRF: wrong form_id",
         "token": "JS9XKLRWSHGQVWJXLLPKMJKPXKQ",
         "should_fail_at": "validate",
@@ -795,6 +903,17 @@
         "validate": {
           "today": "today",
           "yesterday": null,
+          "form_id": "login",
+          "user_id": 1
+        }
+      },
+      {
+        "name": "CSRF: unknown key rejected with both keys",
+        "token": "JS9ZJJHSZRNHZWRZXKMHJGJHJSN",
+        "should_fail_at": "validate",
+        "validate": {
+          "today": "today",
+          "yesterday": "yesterday",
           "form_id": "login",
           "user_id": 1
         }

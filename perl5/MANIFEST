@@ -1,0 +1,9 @@
+Changes
+lib/BWT.pm
+Makefile.PL
+MANIFEST
+README.md
+t/00_load.t
+t/01_direct.t
+t/02_vectors.t
+t/pod.t
