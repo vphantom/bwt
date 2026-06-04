@@ -28,4 +28,7 @@ WriteMakefile(
 			},
 		},
 	},
+	clean => {
+		FILES => 'cover_db/',
+	},
 );
