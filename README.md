@@ -17,8 +17,7 @@ Release 1.0rc5 — 2026-05-26
 ### Implementations
 
 * [OCaml](ocaml/README.md)
-* [Perl 5](perl5/README.md) (planned)
-* [Python](python/README.md) (planned)
+* [Perl 5](perl5/README.md)
 
 ## ACKNOWLEDGMENTS
 
